@@ -1,0 +1,1232 @@
+---
+title: "Human blood-borne fungal rRNA"
+author: "double-strand - Fort Worth Diagnostics"
+date: "Aug 22nd, 2022"
+output:
+  html_document:
+    theme: journal
+    highlight: tango
+    code_folding: hide
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+subtitle: pan fungi rRNA 28S, 18S and 5.8S sequence detection project
+---
+
+version#: `r Sys.time()`
+
+
+# Overall project scope  
+- Design nucleic-acid reagents (primers and probes) for the detection and quantification of any fungal species belonging to the set of documented human pathogens.  
+
+# Status (Aug 22, 2022)  
+* one set of 18S reagents with predicted amplicon's length equals to 65, which passed the cross-reactivity test vs Human rRNA sequences.    
+
+## Log 
+* Aug 06, 2022  
+  + 2 sets of 28S reagents with predicted amplicons' length equals to 67 and 155 bp respectively. 
+* July 29, 2022
+  + released of a first set of candidate universal qRT-PCR reagents for the 28S rRNA (inferred from the SILVA resource): the amplicon size of this 1st set was greater than the specification: 293 bp, hence not valid;    
+
+  
+## Selection of the known human blood-borne fungal species.  
+
+### List of blood-borne fungi:  
+* Mucorales, aka Zygomycetes (Rhizopus, Mucor, Lichthemia, Cunninghamella)  
+* Hyaline hyphomycetes (Aspergillus, Fusarium)  
+* Dematiaceous hyphomycetes (Alternaria, Scedosporium, Aureobasidium)  
+* Yeasts and yeast-like (Candida, Cryptococcus, Malessezia, Pneumocystis jirovecii)  
+* Dimorphic fungi (Histoplasma, Blastomyces, Coccidioides)  
+* Dermatophytes (Trichophyton, Microsporum)  
+    
+### Resources  
+#### Data  
+- the Fungal 28S rRNAs sequence dataset of the Ribosomal Database Project release 11.5 [(RDP)](http://rdp.cme.msu.edu/index.jsp);    
+- the [SILVA SSU and LSU Ref NR 99 data](https://www.arb-silva.de/documentation/release-1381/);  
+- the EMBL-EBI [RNAcentral](https://rnacentral.org/about-us), in particular its [hgnc.fasta](https://ftp.ebi.ac.uk/pub/databases/RNAcentral/current_release/sequences/by-database/hgnc.fasta) data;  
+    
+#### Software package    
+- The [R environment for statistical computing](https://www.r-project.org/);  
+- EMBOSS: The European Molecular Biology Open Software Suite [EMBOSS](http://emboss.sourceforge.net/download/);  
+- [Samtools](http://www.htslib.org/download/);  
+- [Clustal Omega](http://www.clustal.org/omega/);  
+- [primer3](https://github.com/primer3-org/primer3/);  
+
+### Method  
+* With the SILVA data:  
+  - The version# 138.1 LSURef NR99 tax SILVA sequence data set was retrieved from the SILVA resource.  The multifasta file featured 95,286 entries;  
+  - Fungal entries were selected form that SILVA_138.1_LSURef_NR99_tax_silva.fasta: the fungal subset featured 2,652 entries;  
+  - The metadata (SILVA identifier and taxonomy data) was extracted from the multifasta header and used to select the subset of targeted fungi, which returned a 634 28S rRNA sequence data set;  
+  - the SILVA_138.1_LSURef_NR99_tax_silva.fasta was subsetted for the 634 entries and written into the SILVA_138.1_LSURef_NR99_targetIsolates.fasta file;  
+  - 28S rRNA sequence length for each of these 634 entries was inferred with the EMBOSS infoseq utility;  
+  - entries with 28 rRNA full length sequence (greater than 3 kbp) were selected: 598 entries;  
+  - the 598 were partitioned into two sub-multifasta files: (i) the <b>Mucoromycota</b> and (ii) the <b>Dikarya</b>.  These 2 groups correspond to the sub-phyla [Mucoromycota](https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id=1913637) and [Dikarya](https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id=451864) respectively.   There were two reasons for breaking the 598 records set in these 2 subsets corresponding to their sub-phylum membership: (i) computing time: clustal omega derived two seperate alignments faster with 2 runs rather that with the 598 records as input; (ii) When the whole set of 598 records was submitted to the workflow, there was not valid candidate primers returned.  
+  - the Multiple Sequence Alignment program Clustal Omega was invoked on the 569 and 29 sequence instances of the SILVA_138.1_LSURef_NR99_Dikarya.fasta and SILVA_138.1_LSURef_NR99_Mucoromycota.fasta separately; 
+  - the Clustal Omega multiple sequence alignment files (SILVA_138.1_LSURef_NR99_Dikarya.fasta.aln and SILVA_138.1_LSURef_NR99_Mucoromycota.aln) were passed to the EMBOSS [cons](http://emboss.sourceforge.net/apps/cvs/emboss/apps/cons.html) utility which derived two 28S targeted fungi consensus sequences (SILVA_138.1_LSURef_NR99_Dikarya.cons and SILVA_138.1_LSURef_NR99_Mucoromycota.cons); 
+  - these 2 consensus sequences were aligned and passed to cons to write the SILVA_138.1_LSURef_NR99_MucoDika.cons file;  
+  - the SILVA_138.1_LSURef_NR99 consensus sequence was passed to the primer3 program: the inferred forward primer, reverse primer and probe sequence was imported into R and a candidate reagent set was derived based on the respective positions of the sequences w.r.t. the 28S rRNA;   
+  - potential cross-reactivity of the pan fungal rRNA 28S candidate reagents was assessed against the 5 Homo sapiens (human) RNA, 28S ribosomal sequence (RNA28SN1 to RNA28SN5)
+  - all candidate oligo featured more than 3 mismatches against any of the 5 Human 28sRNA paralogues;  
+* With the RDP data:  
+  - the metadata (i.e. header) of each sequence data from the RDP multi-fasta file was collected and used to describe the RDP 11.5 content in terms of fungal species;  
+
+    
+```{r packages, echo=T, message=FALSE, warning=FALSE, results='hide'}
+### Dependencies and settings
+#attaching libraries
+sapply(c("Biostrings", "data.table", "dplyr", "ggplot2", "gggenes", 
+         "kableExtra", "msa", "seqinr", "taxize","tidyverse"), 
+       library, character.only = TRUE)
+
+TargetSpecies <- c("Mucorales", "Aspergillus", "Fusarium", "Alternaria", 
+                   "Scedosporium", "Aureobasidium", "Candida", "Cryptococcus", 
+                   "Malassezia", "Pneumocystis", "Histoplasma", "Blastomyces", 
+                   "Coccidioides", "Trichophyton", "Microsporum")
+
+#primer4Footer <- "PRIMER_TASK=generic\nPRIMER_PICK_LEFT_PRIMER=1\nPRIMER_PICK_INTERNAL_OLIGO=1\nPRIMER_PICK_RIGHT_PRIMER=1\nPRIMER_OPT_SIZE=18\nPRIMER_MIN_SIZE=16\nPRIMER_MAX_SIZE=25\nPRIMER_MAX_NS_ACCEPTED=2\nPRIMER_PRODUCT_SIZE_RANGE=65-170\nP3_FILE_FLAG=1\nPRIMER_EXPLAIN_FLAG=1\nPRIMER_LIBERAL_BASE=1\n="
+primer4Footer <- "PRIMER_TASK=generic\nPRIMER_PICK_LEFT_PRIMER=1\nPRIMER_PICK_INTERNAL_OLIGO=1\nPRIMER_PICK_RIGHT_PRIMER=1\nPRIMER_OPT_SIZE=18\nPRIMER_MIN_SIZE=16\nPRIMER_MAX_SIZE=25\nPRIMER_MAX_NS_ACCEPTED=2\nPRIMER_PRODUCT_SIZE_RANGE=70-150\nP3_FILE_FLAG=1\nPRIMER_EXPLAIN_FLAG=1\n="
+```
+  
+# rRNA qRT-PCR reagent set derived from the SILVA resource.  
+## 28S rRNA gene.   
+### SILVA 138.1 LSURef NR99 database targeted species content      
+```{r SILVA_128_LSU99, echo = TRUE, message = FALSE, warning = FALSE, tidy = TRUE, results = 'asis'}
+SILVA_28S_FungalSpecies <- fread("databases/SILVA/SILVA_138.1_LSURef_NR99_tax_silva_Fungi_meta", header=F) %>% 
+  dplyr::rename(SILVA_ID = V1, taxonomy = V2)
+
+DT::datatable(
+  as.data.frame(
+    sapply(TargetSpecies, function(s) length(
+      grep(s, SILVA_28S_FungalSpecies$taxonomy)))) 
+  %>% dplyr::rename(NumberOfOccurrences = 1),  
+  caption = "Number of isolates per target fungi in SILVA 138 LSURef NR99 release", 
+  rownames = TRUE, 
+  options = list(pageLength = 15, autoWidth = TRUE))
+
+##sum(sapply(TargetSpecies, function(s) length(grep(s, SILVA_28S_FungalSpecies$taxonomy))))
+##634 isolates
+
+# subsetting the SILVA_28S_FungalSpecies for the target species
+SILVA_28S_TargetSpecies <- SILVA_28S_FungalSpecies[unlist(sapply(TargetSpecies, function(s) grep(s, SILVA_28S_FungalSpecies$taxonomy))),]
+
+write.table(SILVA_28S_TargetSpecies[,1], "databases/SILVA/SILVA_138.1_LSURef_NR99_targetIsolates", row.names = F, quote = F, col.names = F)
+
+SILVA_28S_TargetSpeciesLength <- fread("databases/SILVA/SILVA_138.1_LSURef_NR99_targetIsolates.seqle") 
+
+ggplot(SILVA_28S_TargetSpeciesLength, aes(Length)) + geom_histogram(binwidth = 205) + ggtitle("SILVA LSURef NR99 28S target isolates rRNA sequence length distribution") + geom_vline(xintercept  = median(SILVA_28S_TargetSpeciesLength$Length))
+
+# selecting instances where sequence length between 3 and 4 kb
+SILVA_28S_TargetSpeciesLength2 <- SILVA_28S_TargetSpeciesLength[SILVA_28S_TargetSpeciesLength$Length > 3000 & SILVA_28S_TargetSpeciesLength$Length < 4000,]
+
+write.table(SILVA_28S_TargetSpeciesLength2[,1], "databases/SILVA/SILVA_138.1_LSURef_NR99_targetIsolates_FullLength", row.names = F, quote = F, col.names =F)
+
+SILVA_28S_TargetSpecies <- SILVA_28S_TargetSpecies[SILVA_28S_TargetSpecies$SILVA_ID %in% SILVA_28S_TargetSpeciesLength2$Name,]
+
+
+SILVA_28S_TargetSpecies2 <- tidyr::separate(SILVA_28S_TargetSpecies, col = taxonomy, into = c("Domain", "Clade", "Supergroup", "Group", "Kingdom", "Phylum", "Subphylum", "Class", "Order", "Family", "Genus", "Species"), ";", convert = T)
+
+###~~~~~~~~~~~~~taxa structure
+##table(SILVA_28S_TargetSpecies2$Subphylum)
+#     Dikarya Mucoromycota 
+#         569           29 
+#table(SILVA_28S_TargetSpecies2$Class)
+#    Ascomycota  Basidiomycota Mucoromycotina 
+#           476             93             29 
+
+DT::datatable(as.data.frame(table(SILVA_28S_TargetSpecies2$Subphylum)) %>%
+                dplyr::rename(sub_phylum = Var1, NumberOfEntries = Freq), 
+  caption = "Fungi targeted species sub phylum partition for SILVA SSU 28S", rownames = FALSE, 
+  options = list(pageLength = 5, autoWidth = TRUE))
+```
+
+
+```{r SILVA_128_LSU99_workflow, echo = TRUE, message = FALSE, warning = FALSE, tidy = TRUE, results = 'asis'}
+####### workflow for the Mucoromycota sub-phylum########################################## 
+##SILVA_28S_TargetSpecies_Mucoromycota <- SILVA_28S_TargetSpecies2[SILVA_28S_TargetSpecies2$Subphylum == "Mucoromycota",]
+##write.table(SILVA_28S_TargetSpecies_Mucoromycota[,1], "databases/SILVA/SILVA_138.1_LSURef_NR99_Mucoromycota", row.names = F, quote = F, col.names =F)
+
+##system("xargs samtools faidx databases/SILVA/SILVA_138.1_LSURef_NR99_tax_silva.fasta < databases/SILVA/SILVA_138.1_LSURef_NR99_Mucoromycota > databases/SILVA/SILVA_138.1_LSURef_NR99_Mucoromycota.fasta2")
+
+##system("clustalo --threads=2 -i databases/SILVA/SILVA_138.1_LSURef_NR99_Mucoromycota.fasta -o databases/SILVA/SILVA_138.1_LSURef_NR99_Mucoromycota.aln2")
+##system("/usr/lib/emboss/cons databases/SILVA/SILVA_138.1_LSURef_NR99_Mucoromycota.aln databases/SILVA/SILVA_138.1_LSURef_NR99_Mucoromycota.cons")
+
+##SILVA_28S_Mucoromycota.seq <- paste0("SEQUENCE_TEMPLATE=", as.character(readDNAStringSet("databases/SILVA/SILVA_138.1_LSURef_NR99_Mucoromycota.cons")[[1]]))
+
+##primer4Header <- "SEQUENCE_ID=SILVA_138.1_LSURef_NR99_Mucoromycota"
+
+
+##fileCon <- file("databases/SILVA/SILVA_138.1_LSURef_NR99_Mucoromycota.rdf")
+##writeLines(c(primer4Header, SILVA_28S_Mucoromycota.seq, primer4Footer), fileCon)
+##close(fileCon)
+
+##system("primer3_core databases/SILVA/SILVA_138.1_LSURef_NR99_Mucoromycota.rdf")
+
+#################~~~~~~~~~~~~~~~~~~~~~~##########################################
+
+
+####### workflow for the Dikarya sub-phylum ########################################## 
+
+#SILVA_28S_TargetSpecies_Dikarya <- SILVA_28S_TargetSpecies2[SILVA_28S_TargetSpecies2$Subphylum == "Dikarya",]
+#write.table(SILVA_28S_TargetSpecies_Dikarya[,1], "databases/SILVA/SILVA_138.1_LSURef_NR99_Dikarya", row.names = F, quote = F, col.names =F)
+
+#system("xargs samtools faidx databases/SILVA/SILVA_138.1_LSURef_NR99_tax_silva.fasta < databases/SILVA/SILVA_138.1_LSURef_NR99_Dikarya > databases/SILVA/SILVA_138.1_LSURef_NR99_Dikarya.fasta")
+
+#system("clustalo --threads=2 -i databases/SILVA/SILVA_138.1_LSURef_NR99_Dikarya.fasta -o databases/SILVA/SILVA_138.1_LSURef_NR99_Dikarya.aln2")
+#system("/usr/lib/emboss/cons databases/SILVA/SILVA_138.1_LSURef_NR99_Dikarya.aln databases/SILVA/SILVA_138.1_LSURef_NR99_Dikarya.cons")
+
+#SILVA_28S_Dikarya.seq <- paste0("SEQUENCE_TEMPLATE=", as.character(readDNAStringSet("databases/SILVA/SILVA_138.1_LSURef_NR99_Dikarya.cons")[[1]]))
+
+#primer4Header <- "SEQUENCE_ID=SILVA_138.1_LSURef_NR99_Dikarya"
+
+#fileCon <- file("databases/SILVA/SILVA_138.1_LSURef_NR99_Dikarya.rdf")
+#writeLines(c(primer4Header, SILVA_28S_Dikarya.seq, primer4Footer), fileCon)
+#close(fileCon)
+
+#system("primer3_core databases/SILVA/SILVA_138.1_LSURef_NR99_Dikarya.rdf")
+#################~~~~~~~~~~~~~~~~~~~~~~##########################################
+
+
+#### step set for creating a consensus sequence between for the two sub-phyla
+
+#primer4Header <- "SEQUENCE_ID=SILVA_138.1_LSURef_NR99"
+#SILVA_28S <- paste0("SEQUENCE_TEMPLATE=", as.character(readDNAStringSet("databases/SILVA/SILVA_138.1_LSURef_NR99_MucoDika.cons")[[1]]))
+
+#fileCon <- file("databases/SILVA/SILVA_138.1_LSURef_NR99.rdf")
+#writeLines(c(primer4Header, SILVA_28S, primer4Footer), fileCon)
+#close(fileCon)
+#system("primer3_core databases/SILVA/SILVA_138.1_LSURef_NR99.rdf")
+
+SILVA_28S.seq <- readDNAStringSet("databases/SILVA/SILVA_138.1_LSURef_NR99_MucoDika.cons")
+
+```
+
+
+     
+## Candidate 28S primers and probes       
+```{r SILVA_128_LSU99Primer2, echo = TRUE, message = FALSE, warning = FALSE, tidy = TRUE, results = 'asis'}
+forPrimers <- read.table("databases/SILVA/SILVA_138.1_LSURef_NR99.for", header = T, skip = 2, comment.char = "")
+# sorting by position and length
+#forPrimers <- forPrimers[order(forPrimers$start, forPrimers$ln),]
+#selecting shortest primer per position
+forPrimers <- forPrimers %>% group_by(start) %>% slice_min(ln, n=1)
+forPrimers$end <- forPrimers$start + forPrimers$ln
+#forPrimers$strand <- "+"
+forPrimers$reagent <- "for"
+
+revPrimers <- read.table("databases/SILVA/SILVA_138.1_LSURef_NR99.rev", header = T, skip = 2, comment.char = "")
+revPrimers <- revPrimers %>% group_by(start) %>% slice_min(ln, n=1)
+revPrimers$end <- revPrimers$start - revPrimers$ln
+#revPrimers$strand <- "-"
+revPrimers$reagent <- "rev"
+
+### creating reagents set based on their coordinate
+# matrix featuring the distance between the forward and reverse primers
+forRevDistance.mat <- sapply(1:dim(forPrimers)[1], function(i) sapply(1:dim(revPrimers)[1], function(j) revPrimers$end[j] - forPrimers$end[i]))
+
+forward_ind1 <- which(sapply(1:dim(forPrimers)[1], function(i) length(sapply(1:dim(forPrimers)[1], function(i) which(forRevDistance.mat[,i] > 30 & forRevDistance.mat[,i] < 120))[[i]]))>0)
+
+forPrimers2 <- forPrimers[forward_ind1,]
+
+forRevDistance.mat2 <- forRevDistance.mat[,forward_ind1]
+
+revind1 <- which(sapply(1:dim(forRevDistance.mat2)[1], function(i) length(sapply(1:dim(forRevDistance.mat2)[1], function(i) which(forRevDistance.mat2[i,] > 30 & forRevDistance.mat2[i,] < 120))[[i]]))>0)
+
+revPrimers2 <- revPrimers[revind1,]
+
+rRNA2SConsSeqLength <- nchar(as.character(readDNAStringSet("databases/SILVA/SILVA_138.1_LSURef_NR99_MucoDika.cons")[[1]]))
+
+probes <- read.table("databases/SILVA/SILVA_138.1_LSURef_NR99.int", header = T, skip = 2, comment.char = "")
+probes <- probes %>% group_by(start) %>% slice_max(ln, n=1)
+probes$end <- probes$start + probes$ln
+#probes$strand <- "+"
+probes$reagent <- "Probe"
+
+##~~Candidate primers
+#SILVA_28S.seq[[1]][2536:2628]
+#93-letter DNAString object
+#seq: GCGAAAGACAACGAACCACAGAGCGGNCCGCCGNAAGNCCCCAGGAAGCAGAANNCCGNNNNNNNNNACAGNAGAGGAAAGCGAAGAAGAGGC
+
+#SILVA_28S.seq[[1]][2536:2556]
+
+#SILVA_28S.seq[[1]][2552:2572]
+#21-letter DNAString object
+#seq: CACAGAGCGGNCCGCCGNAAG
+#probe
+#Tm_NN("CCCCAGGAAGCAGAA", N= 100, Mg = 10)
+#[1] 58.35231
+#rev
+#Tm_NN("GAAAGCGAAGAAGAGG", N = 100, Mg = 10)
+#[1] 52.49194
+#for
+#Tm_NN("AACGAACCACAGAGC", N = 100, Mg = 10)
+#[1] 53.96369
+
+## cross reactivity assessement against Human rRNA sequence
+r28sforPr1 <- DNAString("AACGAACCACAGAGC")
+r28sRevPr1 <- reverseComplement(DNAString("GAAAGCGAAGAAGAGG"))
+r28sProbe1 <- DNAString("CCCCAGGAAGCAGAA")
+
+#candidate2 <- SILVA_28S.seq[[1]][5459:5634]
+
+r28sforPr2 <- DNAString("AGCCAAGCGCAAGCGA")
+r28sRevPr2 <- reverseComplement(DNAString("ACAAAGGGAACGGAGCG"))
+r28sProbe2 <- DNAString("CGGCCCCACAACCGAAGCAG")
+
+#querySeq <- DNAString("GCGGCCCCACAACCGAAGCAGAACGGAAGCGG")
+#muco <- readDNAStringSet("databases/SILVA/SILVA_138.1_LSURef_NR99_Mucoromycota.fasta")
+#dika <- readDNAStringSet("databases/SILVA/SILVA_138.1_LSURef_NR99_Dikarya.fasta")
+#pairwiseAlignment(r28sforPr1, SILVA_28S.seq, type = "local")
+
+candidate28SRNA_reagents <- data.frame(PrimerID = c("r28sforPr1", "r28sRevPr1", "r28sProbe1", "r28sforPr2", "r28sRevPr2", "r28sProbe2"), seq = c(as.character(r28sforPr1), as.character(r28sRevPr1), as.character(r28sProbe1), as.character(r28sforPr2), as.character(r28sRevPr2), as.character(r28sProbe2)), ln = c(15, 16, 15, 16, 17, 20), Tm = c(48, 49, 55, 61, 60, 71), start = c(2545, 2612, 2574, 5461, 5616, 5575))
+
+DT::datatable(candidate28SRNA_reagents,
+  caption = "candidate 28S pan fungal 28S rRNA qRT-PCR reagents", rownames = FALSE, 
+  options = list(pageLength = 10, autoWidth = TRUE))
+
+```   
+
+### specificity: cross-reactivity prediction againts the 5 human 28rRNA paralogues  
+```{r rRNA28S crossReac, echo = TRUE, message = FALSE, warning = FALSE, tidy = TRUE, results = 'asis'}  
+
+Hs28S <- readDNAStringSet("../fungalrRNADetection/databases/Hs28SrRNA.fasta")
+
+## cross re-activity assessment against Human rRNA sequence
+r28sforPri1_crossreac <- as.data.frame(vmatchPattern(r28sforPr1, Hs28S, max.mismatch = 5))
+r28sforPri1_crossreac$Primer <- "r28sforPri1"
+r28sforPri1_crossreac$NumberOfMissmatches <- 5
+r28sRevPri1_crossreac <- as.data.frame(vmatchPattern(r28sRevPr1, Hs28S, max.mismatch = 5))
+r28sRevPri1_crossreac$Primer <- "r28sRevPri1"
+r28sRevPri1_crossreac$NumberOfMissmatches <- 5
+r28sProbePri1_crossreac <- as.data.frame(vmatchPattern(r28sProbe1, Hs28S, max.mismatch = 3))
+r28sProbePri1_crossreac$Primer <- "r28sProbe1"
+r28sProbePri1_crossreac$NumberOfMissmatches <- 3
+## cross re-activity assessment against Human rRNA sequence
+r28sforPri2_crossreac <- as.data.frame(vmatchPattern(r28sforPr2, Hs28S, max.mismatch = 5))
+r28sforPri2_crossreac$Primer <- "r28sforPri2"
+r28sforPri2_crossreac$NumberOfMissmatches <- 5
+r28sRevPri2_crossreac <- as.data.frame(vmatchPattern(r28sRevPr2, Hs28S, max.mismatch = 5))
+r28sRevPri2_crossreac$Primer <- "r28sRevPri2"
+r28sRevPri2_crossreac$NumberOfMissmatches <- 5
+r28sProbePri2_crossreac <- as.data.frame(vmatchPattern(r28sProbe2, Hs28S, max.mismatch = 5))
+r28sProbePri2_crossreac$Primer <- "r28sProbe2"
+r28sProbePri2_crossreac$NumberOfMissmatches <- 3
+Hs28rRNACrossReac <- rbind(r28sforPri1_crossreac, r28sRevPri1_crossreac, r28sProbePri1_crossreac, r28sforPri2_crossreac, r28sRevPri2_crossreac, r28sProbePri2_crossreac)
+
+Hs28rRNACrossReac <- Hs28rRNACrossReac %>% dplyr::rename(ApprovedName = group)
+Hs28rRNACrossReac$ApprovedName <- paste0("RNA, ribosomal 45S cluster", Hs28rRNACrossReac$ApprovedName) 
+DT::datatable(Hs28rRNACrossReac[,-2],
+  caption = "Cross reactivity evaluation of the fungal 28S rRNA candidates reagents vs Human 28S rRNA sequences", rownames = FALSE, 
+  options = list(pageLength = 20, autoWidth = TRUE))
+```   
+   
+   
+
+```{r SILVA_128_LSU99PrimerMucoromycata, echo = TRUE, message = FALSE, warning = FALSE, tidy = TRUE, results = 'asis'}
+### Candidate primers and probe for 28S Mucoromycata  
+forPrimers <- read.table("databases/SILVA/SILVA_138.1_LSURef_NR99_Mucoromycota.for", header = T, skip = 2, comment.char = "")
+# sorting by position and length
+#forPrimers <- forPrimers[order(forPrimers$start, forPrimers$ln),]
+#selecting shortest primer per position
+forPrimers <- forPrimers %>% group_by(start) %>% slice_min(ln, n=1)
+forPrimers$end <- forPrimers$start + forPrimers$ln
+forPrimers$strand <- "+"
+forPrimers$reagent <- "for"
+
+revPrimers <- read.table("databases/SILVA/SILVA_138.1_LSURef_NR99_Mucoromycota.rev", header = T, skip = 2, comment.char = "")
+revPrimers <- revPrimers %>% group_by(start) %>% slice_min(ln, n=1)
+revPrimers$end <- revPrimers$start - revPrimers$ln
+revPrimers$strand <- "-"
+revPrimers$reagent <- "rev"
+
+### creating reagents set based on their coordinate
+# matrix featuring the distance between the forward and reverse primers
+forRevDistance.mat <- sapply(1:dim(forPrimers)[1], function(i) sapply(1:dim(revPrimers)[1], function(j) revPrimers$end[j] - forPrimers$end[i]))
+
+forward_ind1 <- which(sapply(1:dim(forPrimers)[1], function(i) length(sapply(1:dim(forPrimers)[1], function(i) which(forRevDistance.mat[,i] > 30 & forRevDistance.mat[,i] < 120))[[i]]))>0)
+
+forPrimers2 <- forPrimers[forward_ind1,]
+
+forRevDistance.mat2 <- forRevDistance.mat[,forward_ind1]
+
+revind1 <- which(sapply(1:dim(forRevDistance.mat2)[1], function(i) length(sapply(1:dim(forRevDistance.mat2)[1], function(i) which(forRevDistance.mat2[i,] > 30 & forRevDistance.mat2[i,] < 120))[[i]]))>0)
+
+revPrimers2 <- revPrimers[revind1,]
+
+MucoromycotaConsSeqLength <- nchar(as.character(readDNAStringSet("databases/SILVA/SILVA_138.1_LSURef_NR99_Mucoromycota.cons")[[1]]))
+
+probes <- read.table("databases/SILVA/SILVA_138.1_LSURef_NR99_Mucoromycota.int", header = T, skip = 2, comment.char = "")
+probes <- probes %>% group_by(start) %>% slice_max(ln, n=1)
+probes$end <- probes$start + probes$ln
+probes$strand <- "+"
+probes$reagent <- "Probe"
+
+
+### create a set of candidate primers per region
+ForwardIntervals <- as.data.frame(cbind(forPrimers2$start, findInterval(forPrimers2$start, seq(0, MucoromycotaConsSeqLength,300)))) %>% dplyr::rename(start = V1, rRNA28sregion = V2)
+
+RevIntervals <- as.data.frame(cbind(revPrimers2$start, findInterval(revPrimers2$start, seq(0, MucoromycotaConsSeqLength, 300)))) %>% dplyr::rename(start = V1, rRNA28sregion = V2)
+
+probeIntervals <- as.data.frame(cbind(probes$start, findInterval(probes$start, seq(0, MucoromycotaConsSeqLength, 300)))) %>% dplyr::rename(start = V1, rRNA28sregion = V2)
+
+
+forPrimers2 <- merge(forPrimers2, ForwardIntervals, by = "start")
+revPrimers2 <- merge(revPrimers2, RevIntervals, by = "start")
+probes <- merge(probes, probeIntervals, by = "start")
+
+ForRevPrimers <- rbind(forPrimers2, revPrimers2)
+
+# next find TaqMan probes
+PrimerSet1 <- rbind(ForRevPrimers, probes)
+
+# selecting regions where there are for, rev and taqman probes
+# for each region, select out any which doe not have for, rev and TaqMan probes
+rRNA28SregionsPerPrimer <- sapply(unique(PrimerSet1$rRNA28sregion), function(i) table(PrimerSet1[PrimerSet1$rRNA28sregion == i,]$reagent))
+
+rRNA28SregionsPerPrimer <- sapply(1:length(rRNA28SregionsPerPrimer), function(i) length(rRNA28SregionsPerPrimer[[i]]))
+
+PrimerSet2 <- PrimerSet1[!PrimerSet1$rRNA28sregion %in% which(rRNA28SregionsPerPrimer !=3),]
+
+
+# deselect TaqMan probes with starting coordinates behind or too close to the end of the for primers
+# need only to test the latest for primer
+#for each L3gene region, test the latest fro primer
+PrimerSet3_Mucoromycota <- list()
+
+PrimerSet3_Mucoromycota <- do.call(rbind, sapply(unique(PrimerSet2$rRNA28sregion), function(i) lapply(dim(PrimerSet2[PrimerSet2$rRNA28sregion == i & PrimerSet2$reagent == "for",])[1], function(j) {
+  probeInd <- PrimerSet2[PrimerSet2$reagent == "Probe" & PrimerSet2$rRNA28sregion == i,]$start - PrimerSet2[PrimerSet2$reagent == "for" & PrimerSet2$rRNA28sregion == i,]$end[j]
+  PrimerSet3_Mucoromycota[[i]] <- rbind(PrimerSet2[PrimerSet2$reagent != "Probe" & PrimerSet2$rRNA28sregion == i,] , PrimerSet2[PrimerSet2$reagent == "Probe" & PrimerSet2$rRNA28sregion == i,][ which(probeInd > 5),])
+}
+)
+)
+)
+
+
+#PrimerSet4 <- list()
+
+#PrimerSet4 <- do.call(rbind, sapply(unique(PrimerSet3$rRNA28sregion), function(i) lapply(dim(PrimerSet3[PrimerSet3$rRNA28sregion == i & PrimerSet3$reagent == "rev",])[1], function(j) {
+#  probeInd <- PrimerSet3[PrimerSet3$reagent == "Probe" & PrimerSet3$rRNA28sregion == i,]$end[j] - PrimerSet3[PrimerSet3$reagent == "rev" & PrimerSet3$rRNA28sregion == i,]$end
+#print(probeInd)
+  #  PrimerSet4[[i]] <- rbind(PrimerSet3[PrimerSet3$Primer != "TaqManProbe" & PrimerSet3$L3region == i,] , PrimerSet3[PrimerSet3$Primer == "TaqManProbe" & PrimerSet3$L3region == i,][ which(probeInd > -5),])
+#}
+#)
+#)
+#)
+```
+ 
+ 
+   
+
+```{r SILVA_128_LSU99PrimerDikarya, echo = TRUE, message = FALSE, warning = FALSE, tidy = TRUE, results = 'asis'}
+### Candidate primers and probe for 28S Dikarya  
+forPrimers <- read.table("databases/SILVA/SILVA_138.1_LSURef_NR99_Dikarya.for", header = T, skip = 2, comment.char = "")
+#selecting shortest primer per position
+forPrimers <- forPrimers %>% group_by(start) %>% slice_min(ln, n=1)
+forPrimers$end <- forPrimers$start + forPrimers$ln
+forPrimers$strand <- "+"
+forPrimers$reagent <- "for"
+
+revPrimers <- read.table("databases/SILVA/SILVA_138.1_LSURef_NR99_Dikarya.rev", header = T, skip = 2, comment.char = "")
+revPrimers <- revPrimers %>% group_by(start) %>% slice_min(ln, n=1)
+revPrimers$end <- revPrimers$start - revPrimers$ln
+revPrimers$strand <- "-"
+revPrimers$reagent <- "rev"
+
+### creating reagents set based on their coordinate
+# matrix featuring the distance between the forward and reverse primers
+forRevDistance.mat <- sapply(1:dim(forPrimers)[1], function(i) sapply(1:dim(revPrimers)[1], function(j) revPrimers$end[j] - forPrimers$end[i]))
+
+forward_ind1 <- which(sapply(1:dim(forPrimers)[1], function(i) length(sapply(1:dim(forPrimers)[1], function(i) which(forRevDistance.mat[,i] > 30 & forRevDistance.mat[,i] < 120))[[i]]))>0)
+
+forPrimers2 <- forPrimers[forward_ind1,]
+
+forRevDistance.mat2 <- forRevDistance.mat[,forward_ind1]
+
+revind1 <- which(sapply(1:dim(forRevDistance.mat2)[1], function(i) length(sapply(1:dim(forRevDistance.mat2)[1], function(i) which(forRevDistance.mat2[i,] > 30 & forRevDistance.mat2[i,] < 120))[[i]]))>0)
+
+revPrimers2 <- revPrimers[revind1,]
+
+DikaryaConsSeqLength <- nchar(as.character(readDNAStringSet("databases/SILVA/SILVA_138.1_LSURef_NR99_Dikarya.cons")[[1]]))
+
+probes <- read.table("databases/SILVA/SILVA_138.1_LSURef_NR99_Dikarya.int", header = T, skip = 2, comment.char = "")
+probes <- probes %>% group_by(start) %>% slice_max(ln, n=1)
+probes$end <- probes$start + probes$ln
+probes$strand <- "+"
+probes$reagent <- "Probe"
+
+
+### create a set of candidate primers per region
+ForwardIntervals <- as.data.frame(cbind(forPrimers2$start, findInterval(forPrimers2$start, seq(0, DikaryaConsSeqLength,300)))) %>% dplyr::rename(start = V1, rRNA28sregion = V2)
+
+RevIntervals <- as.data.frame(cbind(revPrimers2$start, findInterval(revPrimers2$start, seq(0, DikaryaConsSeqLength, 300)))) %>% dplyr::rename(start = V1, rRNA28sregion = V2)
+
+probeIntervals <- as.data.frame(cbind(probes$start, findInterval(probes$start, seq(0, DikaryaConsSeqLength, 300)))) %>% dplyr::rename(start = V1, rRNA28sregion = V2)
+
+
+forPrimers2 <- merge(forPrimers2, ForwardIntervals, by = "start")
+revPrimers2 <- merge(revPrimers2, RevIntervals, by = "start")
+probes <- merge(probes, probeIntervals, by = "start")
+
+ForRevPrimers <- rbind(forPrimers2, revPrimers2)
+
+# next find TaqMan probes
+PrimerSet1 <- rbind(ForRevPrimers, probes)
+
+# selecting regions where there are for, rev and taqman probes
+# for each region, select out any which doe not have for, rev and TaqMan probes
+rRNA28SregionsPerPrimer <- sapply(unique(PrimerSet1$rRNA28sregion), function(i) table(PrimerSet1[PrimerSet1$rRNA28sregion == i,]$reagent))
+
+rRNA28SregionsPerPrimer <- sapply(1:length(rRNA28SregionsPerPrimer), function(i) length(rRNA28SregionsPerPrimer[[i]]))
+
+PrimerSet2 <- PrimerSet1[!PrimerSet1$rRNA28sregion %in% which(rRNA28SregionsPerPrimer !=3),]
+
+
+# deselect TaqMan probes with starting coordinates behind or too close to the end of the for primers
+# need only to test the latest for primer
+#for each L3gene region, test the latest fro primer
+PrimerSet3_Dikarya <- list()
+
+PrimerSet3_Dikarya <- do.call(rbind, sapply(unique(PrimerSet2$rRNA28sregion), function(i) lapply(dim(PrimerSet2[PrimerSet2$rRNA28sregion == i & PrimerSet2$reagent == "for",])[1], function(j) {
+  probeInd <- PrimerSet2[PrimerSet2$reagent == "Probe" & PrimerSet2$rRNA28sregion == i,]$start - PrimerSet2[PrimerSet2$reagent == "for" & PrimerSet2$rRNA28sregion == i,]$end[j]
+  PrimerSet3_Dikarya[[i]] <- rbind(PrimerSet2[PrimerSet2$reagent != "Probe" & PrimerSet2$rRNA28sregion == i,] , PrimerSet2[PrimerSet2$reagent == "Probe" & PrimerSet2$rRNA28sregion == i,][ which(probeInd > 5),])
+}
+)
+)
+)
+
+#PrimerSet3_Mucoromycota[PrimerSet3_Mucoromycota$sequence %in% intersect(PrimerSet2$sequence, PrimerSet3_Mucoromycota$sequence),]
+#PrimerSet2[PrimerSet2$sequence %in% intersect(PrimerSet2$sequence, PrimerSet3_Mucoromycota$sequence),]
+
+
+Dikarya28s.cons <-readDNAStringSet("databases/SILVA/SILVA_138.1_LSURef_NR99_Dikarya.cons")
+Mucoromycota28s.cons <-readDNAStringSet("databases/SILVA/SILVA_138.1_LSURef_NR99_Mucoromycota.cons")
+
+
+dikaryaProbesvsMucomycota <- sapply(1:15, function(i) is.null(lapply(PrimerSet2[PrimerSet2$reagent == "Probe",]$sequence, function(s) vmatchPattern(s, Mucoromycota28s.cons, max.mismatch = 0)@ends)[[i]]))
+
+probesInd <- lapply(PrimerSet2[PrimerSet2$reagent == "Probe",]$sequence, function(s) vmatchPattern(s, Mucoromycota28s.cons, max.mismatch = 0))
+
+probesInd <- sapply(1:15, function(i) probesInd[[i]]@ends)
+                                    
+candidateProbes <- PrimerSet2[PrimerSet2$reagent == "Probe",][sapply(1:15, function(i) is.null(probesInd[[i]])),]
+                                   
+ ####                   
+#tmp <- vmatchPattern("GGCGAAAGACAACGAACCACAGAGCG", DNAStringSet(PrimerSet3_Mucoromycota[PrimerSet3_Mucoromycota$reagent == "Probe",]$sequence), max.mismatch = 10)
+
+#tmp2 <- sapply(1:36, function(i) tmp[[i]]@start)
+``` 
+ 
+<hr /><hr /> 
+  
+## 18S rRNA gene: SILVA 138.1 SSURef NR99        
+```{r SILVA_128_SSU99, echo = TRUE, message = FALSE, warning = FALSE, tidy = TRUE, results = 'asis'}
+SILVA_18S_FungalSpecies <- fread("databases/SILVA/SILVA_138.1_SSURef_NR99_tax_silva_Fungi_meta", header=F) %>% 
+  dplyr::rename(species = V1, taxonomy = V2)
+
+DT::datatable(
+  as.data.frame(
+    sapply(TargetSpecies, function(s) length(
+      grep(s, SILVA_18S_FungalSpecies$taxonomy)))) 
+  %>% dplyr::rename(NumberOfOccurrences = 1),  
+  caption = "Number of isolates per target fungi in SILVA 138 SSURef NR99 release", 
+  rownames = TRUE, 
+  options = list(pageLength = 15, autoWidth = TRUE))
+
+##sum(sapply(TargetSpecies, function(s) length(grep(s, SILVA_18S_FungalSpecies$taxonomy))))
+##2189 isolates
+
+# subsetting the SILVA_18S_FungalSpecies for the target species
+SILVA_18S_TargetSpecies <- SILVA_18S_FungalSpecies[unlist(sapply(TargetSpecies, function(s) grep(s, SILVA_18S_FungalSpecies$taxonomy))),]
+
+SILVA_18S_TargetSpecies2 <- tidyr::separate(SILVA_18S_TargetSpecies, col = taxonomy, into = c("Domain", "Clade", "Supergroup", "Group", "Kingdom", "Phylum", "Subphylum", "Class", "Order", "Family", "Genus", "Species"), ";", convert = T)
+
+
+DT::datatable(as.data.frame(table(SILVA_18S_TargetSpecies2$Subphylum)) %>%
+                dplyr::rename(sub_phylum = Var1, NumberOfEntries = Freq), 
+  caption = "Fungi targeted species sub phylum partition for SILVA SSU 18S", rownames = FALSE, 
+  options = list(pageLength = 5, autoWidth = TRUE))
+
+```
+
+
+```{r SILVA_128_SSU99_workflow, echo = TRUE, message = FALSE, warning = FALSE, tidy = TRUE, results = 'asis'}
+write.table(SILVA_18S_TargetSpecies[,1], "databases/SILVA/SILVA_138.1_SSURef_NR99_targetIsolates", row.names = F, quote = F, col.names =F)
+
+system("xargs samtools faidx databases/SILVA/SILVA_138.1_SSURef_NR99_tax_silva.fasta < databases/SILVA/SILVA_138.1_SSURef_NR99_targetIsolates > databases/SILVA/SILVA_138.1_SSURef_NR99_targetIsolates.fasta")
+
+SILVA_18S_TargetSpeciesLength <- fread("databases/SILVA/SILVA_138.1_SSURef_NR99_targetIsolates.seqle") 
+
+ggplot(SILVA_18S_TargetSpeciesLength, aes(Length)) + geom_histogram(binwidth = 50) + ggtitle("SILVA SSURef NR99 18S target isolates rRNA sequence length distribution") + geom_vline(xintercept  = median(SILVA_18S_TargetSpeciesLength$Length))
+
+# selecting instances where sequence length between 3 and 4 kb
+SILVA_18S_TargetSpeciesLength2 <- SILVA_18S_TargetSpeciesLength[SILVA_18S_TargetSpeciesLength$Length > 1600 & SILVA_18S_TargetSpeciesLength$Length < 1900,]
+
+write.table(SILVA_18S_TargetSpeciesLength2[,1], "databases/SILVA/SILVA_138.1_SSURef_NR99_targetIsolates_FullLength", row.names = F, quote = F, col.names =F)
+
+system("xargs samtools faidx databases/SILVA/SILVA_138.1_SSURef_NR99_tax_silva.fasta < databases/SILVA/SILVA_138.1_SSURef_NR99_targetIsolates_FullLength > databases/SILVA/SILVA_138.1_SSURef_NR99_targetIsolates_FullLength.fasta")
+
+
+####### workflow for the Mucoromycota sub-phylum########################################## 
+SILVA_18S_TargetSpecies_Mucoromycota <- SILVA_18S_TargetSpecies2[SILVA_18S_TargetSpecies2$Subphylum == "Mucoromycota",]
+write.table(SILVA_18S_TargetSpecies_Mucoromycota[,1], "databases/SILVA/SILVA_138.1_SSURef_NR99_Mucoromycota", row.names = F, quote = F, col.names =F)
+
+system("xargs samtools faidx databases/SILVA/SILVA_138.1_SSURef_NR99_tax_silva.fasta < databases/SILVA/SILVA_138.1_SSURef_NR99_Mucoromycota > databases/SILVA/SILVA_138.1_SSURef_NR99_Mucoromycota.fasta")
+
+#### with the R msa package
+#SILVA_138.1_SSURef_NR99_Mucoromycota.fasta <- readDNAStringSet("databases/SILVA/SILVA_138.1_SSURef_NR99_Mucoromycota.fasta")
+##SSURef_NR99_Mucoromycota <- msa(SILVA_138.1_SSURef_NR99_Mucoromycota.fasta, "ClustalOmega")
+
+#SSURef_NR99_Mucoromycota <- readRDS("SSURef_NR99_18S.rds")
+#Mucoromycota18S.cons <- msaConsensusSequence(SSURef_NR99_Mucoromycota)
+
+#SSURef_NR99_Mucoromycota.aln <- msaConvert(SSURef_NR99_Mucoromycota, type="seqinr::alignment")
+
+
+#d <- dist.alignment(SSURef_NR99_Mucoromycota.aln, "identity")
+
+#tree <- nj(d)
+
+SILVA_138.1_SSURef_NR99_targetSpecies.fasta <- readDNAStringSet("databases/SILVA/SILVA_138.1_SSURef_NR99_targetIsolates_FullLength.fasta")
+#SSURef_NR99_18S <- msa(SILVA_138.1_SSURef_NR99_targetSpecies.fasta, "ClustalOmega")
+
+SSURef_NR99_18S <- readRDS("SSURef_NR99_18S.rds")
+SLIVA_18S.cons <- msaConsensusSequence(SSURef_NR99_18S)
+SLIVA_18S.cons <- gsub("-|\\?", "N", SLIVA_18S.cons)
+
+SILVA_18S <- paste0("SEQUENCE_TEMPLATE=", SLIVA_18S.cons)
+
+primer4Header <- "SEQUENCE_ID=SILVA_138.1_SSURef_NR99"
+
+fileCon <- file("databases/SILVA/SILVA_138.1_SSURef_NR99.rdf")
+writeLines(c(primer4Header, SILVA_18S, primer4Footer), fileCon)
+close(fileCon)
+
+system("primer3_core databases/SILVA/SILVA_138.1_SSURef_NR99.rdf")
+
+
+# system("clustalo --threads=2 -i databases/SILVA/SILVA_138.1_SSURef_NR99_Mucoromycota.fasta -o databases/SILVA/SILVA_138.1_SSURef_NR99_Mucoromycota.aln")
+# system("/usr/lib/emboss/cons databases/SILVA/SILVA_138.1_SSURef_NR99_Mucoromycota.aln databases/SILVA/SILVA_138.1_SSURef_NR99_Mucoromycota.cons")
+# 
+# SILVA_18S_Mucoromycota.seq <- paste0("SEQUENCE_TEMPLATE=", as.character(readDNAStringSet("databases/SILVA/SILVA_138.1_SSURef_NR99_Mucoromycota.cons")[[1]]))
+# 
+# primer4Header <- "SEQUENCE_ID=SILVA_138.1_SSURef_NR99_Mucoromycota"
+# 
+# 
+# fileCon <- file("databases/SILVA/SILVA_138.1_SSURef_NR99_Mucoromycota.rdf")
+# writeLines(c(primer4Header, SILVA_18S_Mucoromycota.seq, primer4Footer), fileCon)
+# close(fileCon)
+# 
+# system("primer3_core databases/SILVA/SILVA_138.1_SSURef_NR99_Mucoromycota.rdf")
+# 
+# #################~~~~~~~~~~~~~~~~~~~~~~##########################################
+# 
+# 
+# ####### workflow for the Dikarya sub-phylum ########################################## 
+# 
+# SILVA_18S_TargetSpecies_Dikarya <- SILVA_18S_TargetSpecies2[SILVA_18S_TargetSpecies2$Subphylum == "Dikarya",]
+# write.table(SILVA_18S_TargetSpecies_Dikarya[,1], "databases/SILVA/SILVA_138.1_SSURef_NR99_Dikarya", row.names = F, quote = F, col.names =F)
+# 
+# system("xargs samtools faidx databases/SILVA/SILVA_138.1_SSURef_NR99_tax_silva.fasta < databases/SILVA/SILVA_138.1_SSURef_NR99_Dikarya > databases/SILVA/SILVA_138.1_SSURef_NR99_Dikarya.fasta")
+# 
+# system("clustalo --threads=2 -i databases/SILVA/SILVA_138.1_SSURef_NR99_Dikarya.fasta -o databases/SILVA/SILVA_138.1_SSURef_NR99_Dikarya.aln")
+# system("/usr/lib/emboss/cons databases/SILVA/SILVA_138.1_SSURef_NR99_Dikarya.aln databases/SILVA/SILVA_138.1_SSURef_NR99_Dikarya.cons")
+# 
+# SILVA_18S_Dikarya.seq <- paste0("SEQUENCE_TEMPLATE=", as.character(readDNAStringSet("databases/SILVA/SILVA_138.1_SSURef_NR99_Dikarya.cons")[[1]]))
+# 
+# primer4Header <- "SEQUENCE_ID=SILVA_138.1_SSURef_NR99_Dikarya"
+# 
+# fileCon <- file("databases/SILVA/SILVA_138.1_SSURef_NR99_Dikarya.rdf")
+# writeLines(c(primer4Header, SILVA_18S_Dikarya.seq, primer4Footer), fileCon)
+# close(fileCon)
+# 
+# system("primer3_core databases/SILVA/SILVA_138.1_SSURef_NR99_Dikarya.rdf")
+# #################~~~~~~~~~~~~~~~~~~~~~~##########################################
+# 
+# 
+# #### step set for creating a consensus sequence between for the two sub-phyla
+# system("cat databases/SILVA/SILVA_138.1_SSURef_NR99_Dikarya.cons databases/SILVA/SILVA_138.1_SSURef_NR99_Mucoromycota.cons > databases/SILVA/SILVA_138.1_SSURef_NR99_MucoDika.fas")
+# 
+# system("clustalo --threads=2 -i databases/SILVA/SILVA_138.1_SSURef_NR99_MucoDika.fas -o databases/SILVA/SILVA_138.1_SSURef_NR99_MucoDika.aln")
+# 
+# system("/usr/lib/emboss/cons databases/SILVA/SILVA_138.1_SSURef_NR99_MucoDika.aln databases/SILVA/SILVA_138.1_SSURef_NR99_MucoDika.cons")
+# 
+# primer4Header <- "SEQUENCE_ID=SILVA_138.1_SSURef_NR99"
+# SILVA_18S <- paste0("SEQUENCE_TEMPLATE=", as.character(readDNAStringSet("databases/SILVA/SILVA_138.1_SSURef_NR99_MucoDika.cons")[[1]]))
+# 
+# fileCon <- file("databases/SILVA/SILVA_138.1_SSURef_NR99.rdf")
+# writeLines(c(primer4Header, SILVA_18S, primer4Footer), fileCon)
+# close(fileCon)
+# system("primer3_core databases/SILVA/SILVA_138.1_SSURef_NR99.rdf")
+# 
+# 
+# 
+# ################################
+# SILVA_18S.seq <- paste0("SEQUENCE_TEMPLATE=", as.character(readDNAStringSet("databases/SILVA/SILVA_138.1_SSURef_NR99_targetIsolates_FullLength.cons")[[1]]))
+# 
+# primer4Header <- "SEQUENCE_ID=SILVA_138.1_SSURef_NR99"
+# 
+# fileCon <- file("databases/SILVA/SILVA_138.1_SSURef_NR99.rdf")
+# writeLines(c(primer4Header, SILVA_18S.seq, primer4Footer), fileCon)
+# close(fileCon)
+# 
+# system("primer3_core databases/SILVA/SILVA_138.1_SSURef_NR99.rdf")
+
+#tmp <- read_file("databases/SILVA/tmp")
+#tmp2 <- str_split(tmp, "")
+#table(tmp2)
+
+#ssualn <- readDNAMultipleAlignment("databases/SILVA/SILVA_138.1_SSURef_NR99_targetIsolates_FullLength.aln")
+```
+  
+## Candidate 18S primers and probes     
+```{r SILVA_128_SSU99Primer2, echo = TRUE, message = FALSE, warning = FALSE, tidy = TRUE, results = 'asis'}
+for18SPrimers <- read.table("databases/SILVA/SILVA_138.1_SSURef_NR99.for", header = T, skip = 2, comment.char = "")
+for18SPrimers <- for18SPrimers[!for18SPrimers$sequence %in% grep("N", for18SPrimers$sequence, value = T),]
+# sorting by position and length
+#forPrimers <- forPrimers[order(forPrimers$start, forPrimers$ln),]
+#selecting shortest primer per position
+for18SPrimers <- for18SPrimers %>% group_by(start) %>% slice_min(ln, n=1)
+for18SPrimers$end <- for18SPrimers$start + for18SPrimers$ln
+#forPrimers$strand <- "+"
+for18SPrimers$reagent <- "for"
+
+rev18SPrimers <- read.table("databases/SILVA/SILVA_138.1_SSURef_NR99.rev", header = T, skip = 2, comment.char = "")
+rev18SPrimers <- rev18SPrimers[!rev18SPrimers$sequence %in% grep("N", rev18SPrimers$sequence, value = T),]
+
+rev18SPrimers <- rev18SPrimers %>% group_by(start) %>% slice_min(ln, n=1)
+rev18SPrimers$end <- rev18SPrimers$start - rev18SPrimers$ln
+#revPrimers$strand <- "-"
+rev18SPrimers$reagent <- "rev"
+
+### creating reagents set based on their coordinate
+# matrix featuring the distance between the forward and reverse primers
+forRev18SDistance.mat <- sapply(1:dim(for18SPrimers)[1], function(i) sapply(1:dim(rev18SPrimers)[1], function(j) rev18SPrimers$end[j] - for18SPrimers$end[i]))
+
+forward18S_ind1 <- which(sapply(1:dim(for18SPrimers)[1], function(i) length(sapply(1:dim(for18SPrimers)[1], function(i) which(forRev18SDistance.mat[,i] > 30 & forRev18SDistance.mat[,i] < 120))[[i]]))>0)
+
+for18SPrimers2 <- for18SPrimers[forward18S_ind1,]
+
+forRev18SDistance.mat2 <- forRev18SDistance.mat[,forward18S_ind1]
+
+revi18Snd1 <- which(sapply(1:dim(forRev18SDistance.mat2)[1], function(i) length(sapply(1:dim(forRev18SDistance.mat2)[1], function(i) which(forRev18SDistance.mat2[i,] > 30 & forRev18SDistance.mat2[i,] < 120))[[i]]))>0)
+
+rev18SPrimers2 <- rev18SPrimers[revi18Snd1,]
+
+#rRNA18SConsSeqLength <- nchar(SLIVA_18S.cons)
+
+probes18S <- read.table("databases/SILVA/SILVA_138.1_SSURef_NR99.int", header = T, skip = 2, comment.char = "")
+probes18S <- probes18S %>% group_by(start) %>% slice_max(ln, n=1)
+probes18S$end <- probes18S$start + probes18S$ln
+#probes$strand <- "+"
+probes18S$reagent <- "Probe"
+
+#########################################################
+
+
+# tmp <- lapply(1:dim(for18SPrimers2)[1], function(i) {
+# #tmp <- lapply(1:2, function(i) {  
+#   tmpa <- sapply(1:dim(rev18SPrimers2)[1], function(j) rev18SPrimers2$start[j] - for18SPrimers2$start[i])
+#   tmpb <- rev18SPrimers2[which(tmpa <151 & tmpa > 25),]
+#   #tmpb <- cbind(for18SPrimers2[i,], rev18SPrimers2[which(tmpa <151 & tmpa > 25),])
+#   tmpb <- tmpb[(tmpb$any_th ==0 & tmpb$end_th == 0 & tmpb$pin ==0),]
+#   #print(length(tmpa))
+#   })
+# 
+# tmpc <- sapply(1:(length(tmp)-1), function(i) {if (dplyr::all_equal(tmp[[i]], tmp[[i+1]]) == TRUE){
+#   tmpb <- for18SPrimers2[c(i, i+1),]}})
+#   
+# sapply(1:(length(tmp)-1), function(i) dplyr::all_equal(tmp[[i]], tmp[[i+1]]))
+
+###
+primers18S <- rbind(for18SPrimers2, rev18SPrimers2, probes18S)
+
+primers18S$ID <- paste0(primers18S$reagent, "_", primers18S$start)
+
+
+tmpouter <- list()  
+for(i in 1:dim(primers18S[primers18S$reagent == "for",])[1]){
+  tmpinner <- list()
+  for(j in 1:dim(primers18S[primers18S$reagent == "rev",])[1]){
+  tmpinner[[j]] <- as.data.frame(cbind(primers18S[primers18S$reagent == "for",]$ID[i], primers18S[primers18S$reagent == "rev",]$start[j] - primers18S[primers18S$reagent == "for",]$start[i], primers18S[primers18S$reagent == "rev",]$ID[j]))
+  i+1
+  }
+  tmpouter[[i]] <- dplyr::bind_rows(tmpinner)
+  j+1
+}
+
+ampliconSet <- dplyr::bind_rows(tmpouter) %>% dplyr::rename(forPrimerID = V1, ampliconLength = V2, revPrimerID = V3)
+
+ampliconSet$ampliconLength <- as.numeric(ampliconSet$ampliconLength)
+
+ampliconSet <- ampliconSet[(ampliconSet$ampliconLength > 60 & ampliconSet$ampliconLength < 150),]
+
+ampliconSet$start <- as.numeric(gsub("for_", "", ampliconSet$forPrimerID))
+ampliconSet$end <- as.numeric(gsub("rev_", "", ampliconSet$revPrimerID))
+
+ampliconSet$ampliconID <- paste0(ampliconSet$start, "_", ampliconSet$end)
+
+tmpouter2 <- list()
+for(i in 1:dim(primers18S[primers18S$reagent == "Probe",])[1]){
+  tmpinner2 <- list()
+  for(j in 1:dim(ampliconSet)[1]){
+    if (primers18S[primers18S$reagent == "Probe",]$start[i] - ampliconSet$start[j] > 15 & ampliconSet$end[j] - primers18S[primers18S$reagent == "Probe",]$end[i] >15){
+      tmpinner2 <-  as.data.frame(cbind(ampliconSet$ampliconID[j], primers18S[primers18S$reagent == "Probe",]$ID[i]))
+      i+1
+    }
+      tmpouter2[[i]] <- dplyr::bind_rows(tmpinner2)
+      j+1
+  }
+  }
+ampliconSetWithProbe <- dplyr::bind_rows(tmpouter2) %>% dplyr::rename(ampliconID = V1, ProbePrimerID = V2)
+  
+ampliconSetWithProbe <- merge(ampliconSetWithProbe, ampliconSet, by = "ampliconID")
+
+ampliconSetWithProbe <- merge(primers18S[,-c(1,3,5,12)], ampliconSetWithProbe, by.x = "ID", by.y = "forPrimerID")
+
+ampliconSetWithProbe <- merge(ampliconSetWithProbe, primers18S, by.x = "revPrimerID", by.y = "ID")
+
+ampliconSetWithProbe <- merge(ampliconSetWithProbe, primers18S, by.x = "ProbePrimerID", by.y = "ID")
+
+#tmp <- lapply(unique(ampliconSetWithProbe$ampliconID), function(a) ampliconSetWithProbe[ampliconSetWithProbe$ampliconID == a, ]$any_th.x == 0.00)
+
+ampliconSetWithProbe <- ampliconSetWithProbe[ampliconSetWithProbe$any_th.x == 0.00,]
+
+reagents18Scandidates <- as.data.frame(ampliconSetWithProbe[1,])
+
+reagents18Scandidates <- reagents18Scandidates %>% dplyr::rename(forPrimerSeq = sequence.x, forPrimerLength = ln.x, forPrimerGC = GC..x, forPrimerTm = Tm.x, revPrimerSeq = sequence.y, revPrimerLength = ln.y, revPrimerGC = GC..y, revPrimerTm = Tm.y, ProbeSeq = sequence, ProbeLength = ln, ProbeGC = GC., ProbeTm = Tm)
+
+```
+  
+  
+### specificity: cross-reactivity prediction againts the 5 human 28rRNA paralogues  
+```{r rRNA18S crossReac, echo = TRUE, message = FALSE, warning = FALSE, tidy = TRUE, results = 'asis'}  
+
+#Hs28S <- readDNAStringSet("../fungalrRNADetection/databases/Hs28SrRNA.fasta")
+
+## cross re-activity assessment against Human rRNA sequence
+r18sforPri1_crossreac <- as.data.frame(vmatchPattern(reagents18Scandidates$forPrimerSeq, Hs28S, max.mismatch = 5))
+
+r18sRevPri1_crossreac <- as.data.frame(vmatchPattern(reagents18Scandidates$revPrimerSeq, Hs28S, max.mismatch = 2))
+
+r18sProbePri1_crossreac <- as.data.frame(vmatchPattern(reagents18Scandidates$ProbeSeq, Hs28S, max.mismatch = 3))
+
+DT::datatable(reagents18Scandidates[,c(13, 14,3:7, 18,20,22,23,31,33,35,36)],
+  caption = "candidate 18S pan fungal 28S rRNA qRT-PCR reagents", rownames = FALSE, 
+  options = list(pageLength = 10, autoWidth = TRUE))
+
+
+```     
+
+
+
+<hr /><br />
+
+# Ribosomal Database Project Release 11 fungal species for the 28S rRNA gene  
+* 8 phyla  
+* 43 classes  
+* 156 orders  
+* 505 families  
+* 1,882 genera   
+* 35,331 species  
+* 125,525 isolates   
+
+```{r RDP28S, echo = TRUE, message = FALSE, warning = FALSE, tidy = TRUE, results = 'asis'}
+RDP_28S_FungalSpecies <- fread("databases/RDP/RDP_28S_FungalSpecies.txt", header=F) %>% 
+  dplyr::rename(species = V1, taxonomy = V2)
+
+# removing the RDP seqID
+RDP_28S_FungalSpecies$species <- gsub("S\\d+ ", "", RDP_28S_FungalSpecies$species)
+
+# amending the current taxonomy attribute
+RDP_28S_FungalSpecies$taxonomy <- gsub("Lineage=Root;", "", RDP_28S_FungalSpecies$taxonomy)
+
+# breaking up the taxonomy attribute into its granular hierarchy
+RDP_28S_FungalSpecies <- tidyr::separate(
+  RDP_28S_FungalSpecies, 
+  col = taxonomy, 
+  into = c("rootrank", "Domain", "domain", "Phylum",  "phylum", 
+           "Class", "class", "Order", "order", "Family", "family",
+           "Genus", "genus"), ";", convert = T)[,c(1,3,5,7,9,11,13)]
+
+DT::datatable(as.data.frame(table(RDP_28S_FungalSpecies$Phylum)) %>% 
+  dplyr::rename(Phylum = Var1, NumberOfIsolates = Freq), 
+  caption = "RDP Release 11 species with rRNA 28S sequence", rownames = FALSE, 
+  options = list(pageLength = 10, autoWidth = TRUE))
+
+```
+  
+<hr /><hr /><br /><br />  
+  
+## Mucorales order      
+* 12 families 
+* 20 genera  
+* 256 species  
+* 1,008 isolates  
+ 
+```{r Mucorales, echo = TRUE, message = FALSE, warning = FALSE, tidy = TRUE, results = 'asis'}
+Mucorales <- RDP_28S_FungalSpecies[grep("Mucorales", RDP_28S_FungalSpecies$Order),]
+
+DT::datatable(as.data.frame(table(Mucorales$Family)) %>% 
+  dplyr::rename(Family = Var1, NumberOfIsolates = Freq), 
+  caption = "Families of the Mucorales Order", rownames = FALSE, 
+  options = list(pageLength = 10, autoWidth = TRUE))
+
+
+DT::datatable(as.data.frame(table(Mucorales$Genus)) %>% 
+  dplyr::rename(Genus = Var1, NumberOfIsolates = Freq), 
+  caption = "Genuses of the Mucorales Order", rownames = FALSE, 
+  options = list(pageLength = 10, autoWidth = TRUE))
+
+
+DT::datatable(as.data.frame(table(gsub(";.*", "", Mucorales$species))) %>% 
+  dplyr::rename(Species = Var1, NumberOfIsolates = Freq), 
+  caption = "Species of the Mucorales Order", rownames = FALSE, 
+  options = list(pageLength = 10, autoWidth = TRUE))
+```
+  
+  
+<hr /><hr /><br /><br />    
+  
+
+## Aspergillus genus      
+* 190 species  
+* 712 isolates  
+```{r Aspergillus, echo = TRUE, message = FALSE, warning = FALSE, tidy = TRUE, results = 'asis'}
+Aspergillus <- RDP_28S_FungalSpecies[grep("Aspergillus", RDP_28S_FungalSpecies$Genus, ignore.case = T),]
+
+DT::datatable(as.data.frame(table(gsub(";.*", "", Aspergillus$species))) %>% 
+  dplyr::rename(Species = Var1, NumberOfIsolates = Freq), 
+  caption = "Species of the Aspergillus Family", rownames = FALSE, 
+  options = list(pageLength = 10, autoWidth = TRUE))
+```
+
+  
+  
+<hr /><hr /><br /><br />    
+  
+
+## Fusarium species      
+* 1 species  
+* 768 isolates  
+```{r Fusarium, echo = TRUE, message = FALSE, warning = FALSE, tidy = TRUE, results = 'asis'}
+Fusarium <- RDP_28S_FungalSpecies[grep("Fusarium", RDP_28S_FungalSpecies$species, ignore.case = T,),]
+
+DT::datatable(as.data.frame(table(gsub(";.*", "", Fusarium$species))) %>% 
+  dplyr::rename(Species = Var1, NumberOfIsolates = Freq), 
+  caption = "Fusarium Species", rownames = FALSE, 
+  options = list(pageLength = 10, autoWidth = TRUE))
+```
+
+
+  
+  
+<hr /><hr /><br /><br />    
+  
+
+## Alternaria genus      
+* 238 species  
+* 819 isolates  
+```{r Alternaria, echo = TRUE, message = FALSE, warning = FALSE, tidy = TRUE, results = 'asis'}
+Alternaria <- RDP_28S_FungalSpecies[grep("Alternaria", RDP_28S_FungalSpecies$Genus, ignore.case = T,),]
+
+DT::datatable(as.data.frame(table(gsub(";.*", "", Alternaria$species))) %>% 
+  dplyr::rename(Species = Var1, NumberOfIsolates = Freq), 
+  caption = "Alternaria Species", rownames = FALSE, 
+  options = list(pageLength = 10, autoWidth = TRUE))
+```
+
+  
+  
+<hr /><hr /><br /><br />    
+  
+
+## Scedosporium species      
+* 1 species  
+* 11 isolates  
+```{r Scedosporium, echo = TRUE, message = FALSE, warning = FALSE, tidy = TRUE, results = 'asis'}
+Scedosporium <- RDP_28S_FungalSpecies[grep("Scedosporium", RDP_28S_FungalSpecies$species, ignore.case = T,),]
+
+DT::datatable(as.data.frame(table(gsub(";.*", "", Scedosporium$species))) %>% 
+  dplyr::rename(Species = Var1, NumberOfIsolates = Freq), 
+  caption = "Scedosporium Species", rownames = FALSE, 
+  options = list(pageLength = 10, autoWidth = TRUE))
+```
+
+  
+  
+<hr /><hr /><br /><br />    
+  
+
+## Aureobasidium species      
+* 1 species  
+* 547 isolates  
+```{r Aureobasidium, echo = TRUE, message = FALSE, warning = FALSE, tidy = TRUE, results = 'asis'}
+Aureobasidium <- RDP_28S_FungalSpecies[grep("Aureobasidium", RDP_28S_FungalSpecies$species, ignore.case = T,),]
+
+DT::datatable(as.data.frame(table(gsub(";.*", "", Aureobasidium$species))) %>% 
+  dplyr::rename(Species = Var1, NumberOfIsolates = Freq), 
+  caption = "Aureobasidium Species", rownames = FALSE, 
+  options = list(pageLength = 10, autoWidth = TRUE))
+```
+
+<hr /><hr /><br /><br />    
+  
+
+## Candida species      
+* 1 species  
+* 5396 isolates  
+```{r Candida, echo = TRUE, message = FALSE, warning = FALSE, tidy = TRUE, results = 'asis'}
+Candida <- RDP_28S_FungalSpecies[grep("Candida", RDP_28S_FungalSpecies$species, ignore.case = T,),]
+
+DT::datatable(as.data.frame(table(gsub(";.*", "", Candida$species))) %>% 
+  dplyr::rename(Species = Var1, NumberOfIsolates = Freq), 
+  caption = "Candida Species", rownames = FALSE, 
+  options = list(pageLength = 10, autoWidth = TRUE))
+```
+
+
+<hr /><hr /><br /><br />    
+  
+
+## Cryptococcus genus        
+* 182 species  
+* 809 isolates  
+```{r Cryptococcus, echo = TRUE, message = FALSE, warning = FALSE, tidy = TRUE, results = 'asis'}
+Cryptococcus <- RDP_28S_FungalSpecies[grep("Cryptococcus", RDP_28S_FungalSpecies$Genus, ignore.case = T,),]
+
+DT::datatable(as.data.frame(table(gsub(";.*", "", Cryptococcus$species))) %>% 
+  dplyr::rename(Species = Var1, NumberOfIsolates = Freq), 
+  caption = "Cryptococcus Species", rownames = FALSE, 
+  options = list(pageLength = 10, autoWidth = TRUE))
+```
+
+
+
+<hr /><hr /><br /><br />    
+  
+
+## Malassezia genus        
+* 33 species  
+* 929 isolates  
+```{r Malassezia, echo = TRUE, message = FALSE, warning = FALSE, tidy = TRUE, results = 'asis'}
+Malassezia <- RDP_28S_FungalSpecies[grep("Malassezia", RDP_28S_FungalSpecies$Genus, ignore.case = T,),]
+
+DT::datatable(as.data.frame(table(gsub(";.*", "", Malassezia$species))) %>% 
+  dplyr::rename(Species = Var1, NumberOfIsolates = Freq), 
+  caption = "Malassezia Species", rownames = FALSE, 
+  options = list(pageLength = 10, autoWidth = TRUE))
+```
+
+
+
+
+<hr /><hr /><br /><br />    
+  
+
+## Pneumocystis genus        
+* 1 species  
+* 2 isolates  
+```{r Pneumocystis, echo = TRUE, message = FALSE, warning = FALSE, tidy = TRUE, results = 'asis'}
+Pneumocystis <- RDP_28S_FungalSpecies[grep("Pneumocystis", RDP_28S_FungalSpecies$species, ignore.case = T,),]
+
+DT::datatable(as.data.frame(table(gsub(";.*", "", Pneumocystis$species))) %>% 
+  dplyr::rename(Species = Var1, NumberOfIsolates = Freq), 
+  caption = "Pneumocystis Species", rownames = FALSE, 
+  options = list(pageLength = 10, autoWidth = TRUE))
+```
+
+
+
+
+<hr /><hr /><br /><br />    
+  
+
+## Histoplasma species        
+* 1 species  
+* 5 isolates  
+```{r Histoplasma, echo = TRUE, message = FALSE, warning = FALSE, tidy = TRUE, results = 'asis'}
+Histoplasma <- RDP_28S_FungalSpecies[grep("Histoplasma", RDP_28S_FungalSpecies$species, ignore.case = T,),]
+
+DT::datatable(as.data.frame(table(gsub(";.*", "", Histoplasma$species))) %>% 
+  dplyr::rename(Species = Var1, NumberOfIsolates = Freq), 
+  caption = "Histoplasma Species", rownames = FALSE, 
+  options = list(pageLength = 10, autoWidth = TRUE))
+```
+
+  
+
+<hr /><hr /><br /><br />    
+  
+
+## Blastomyces species        
+* 1 species  
+* 6 isolates  
+```{r Blastomyces, echo = TRUE, message = FALSE, warning = FALSE, tidy = TRUE, results = 'asis'}
+Blastomyces <- RDP_28S_FungalSpecies[grep("Blastomyces", RDP_28S_FungalSpecies$species, ignore.case = T,),]
+
+DT::datatable(as.data.frame(table(gsub(";.*", "", Blastomyces$species))) %>% 
+  dplyr::rename(Species = Var1, NumberOfIsolates = Freq), 
+  caption = "Blastomyces Species", rownames = FALSE, 
+  options = list(pageLength = 10, autoWidth = TRUE))
+```
+
+
+  
+
+
+
+<hr /><hr /><br /><br />    
+  
+
+## Coccidioides species        
+* 1 species  
+* 60 isolates  
+```{r Coccidioides, echo = TRUE, message = FALSE, warning = FALSE, tidy = TRUE, results = 'asis'}
+Coccidioides <- RDP_28S_FungalSpecies[grep("Coccidioides", RDP_28S_FungalSpecies$species, ignore.case = T,),]
+
+DT::datatable(as.data.frame(table(gsub(";.*", "", Coccidioides$species))) %>% 
+  dplyr::rename(Species = Var1, NumberOfIsolates = Freq), 
+  caption = "Coccidioides Species", rownames = FALSE, 
+  options = list(pageLength = 10, autoWidth = TRUE))
+```
+
+  
+
+
+
+<hr /><hr /><br /><br />    
+  
+
+## Trichophyton species        
+* 1 species  
+* 70 isolates  
+```{r Trichophyton, echo = TRUE, message = FALSE, warning = FALSE, tidy = TRUE, results = 'asis'}
+Trichophyton <- RDP_28S_FungalSpecies[grep("Trichophyton", RDP_28S_FungalSpecies$species, ignore.case = T,),]
+
+DT::datatable(as.data.frame(table(gsub(";.*", "", Trichophyton$species))) %>% 
+  dplyr::rename(Species = Var1, NumberOfIsolates = Freq), 
+  caption = "Trichophyton Species", rownames = FALSE, 
+  options = list(pageLength = 10, autoWidth = TRUE))
+```
+
+  
+
+<hr /><hr /><br /><br />    
+  
+
+## Microsporum species        
+* 1 species  
+* 128 isolates  
+```{r Microsporum, echo = TRUE, message = FALSE, warning = FALSE, tidy = TRUE, results = 'asis'}
+Microsporum <- RDP_28S_FungalSpecies[grep("Microsporum", RDP_28S_FungalSpecies$species, ignore.case = T,),]
+
+DT::datatable(as.data.frame(table(gsub(";.*", "", Microsporum$species))) %>% 
+  dplyr::rename(Species = Var1, NumberOfIsolates = Freq), 
+  caption = "Microsporum Species", rownames = FALSE, 
+  options = list(pageLength = 10, autoWidth = TRUE))
+```
+
+<hr /><hr /><br /><br />    
+
+
+## RDP 28S rRNA seq length distribution
+```{r seqLength, echo = TRUE, message = FALSE, warning = FALSE, tidy = TRUE, results = 'asis'}
+RDP_seqLength <- read.table("databases/RDP/current_Fungi_seqLength.txt", header = T)
+ggplot(RDP_seqLength, aes(Length)) + geom_density() + ggtitle("RDP Release 11.5 28S rRNA sequence length distribution")
+
+RDPfullLength <- RDP_seqLength[RDP_seqLength$Length > 3300,]
+write.table(RDPfullLength, "databases/RDP/current_Fungi_fullLength.txt", sep = "\t", quote = F, row.names = F)
+
+
+targetFungi_seqLength <- read.table("databases/RDP/targetFungi_seqLength.txt", header = T)
+#ggplot(targetFungi_seqLength, aes(Length)) + geom_density() + ggtitle("RDP Release 11.5 28S rRNA sequence length distribution")
+
+write.table(intersect(RDPfullLength$Name, targetFungi_seqLength$Name), "databases/RDP/targetFungiFullLengthID.txt",  sep = "\t", quote = F, row.names = F)
+
+#silva_LSUref99 <- read.table("databases/SILVA/SILVA_138.1_LSURef_NR99_Fungi_silva_seqLength.txt", header = T)
+#ggplot(silva_LSUref99, aes(Length)) + geom_density() + ggtitle("SILVA LSU 28S rRNA sequence length distribution")
+
+```
+  
+## Annex  
+### 1st candidate primers and probe for 28S: amplicon length too long      
+```{r SILVA_128_LSU99Primer, echo = TRUE, message = FALSE, warning = FALSE, tidy = TRUE, results = 'asis'}
+forPrimers <- read.table("databases/SILVA/SILVA_138.1_LSURef.for", header = T, skip = 2, comment.char = "")
+forPrimers$end <- forPrimers$start + forPrimers$ln
+forPrimers <- forPrimers[order(forPrimers$end),]
+forPrimers$strand <- "+"
+forPrimers$reagent <- "for"
+
+# rev primers
+revPrimers <- read.table("databases/SILVA/SILVA_138.1_LSURef.rev", header = T, skip = 2, comment.char = "")
+revPrimers$end <- revPrimers$start - revPrimers$ln
+revPrimers$strand <- "-"
+revPrimers$reagent <- "rev"
+
+probes <- read.table("databases/SILVA/SILVA_138.1_LSURef.int", header = T, skip = 2, comment.char = "")
+probes$end <- probes$start + probes$ln
+probes$strand <- "+"
+probes$reagent <- "Probe"
+
+
+# selecting relevant orward primers w.r.t. their distance from the probe
+forPrimers2 <- forPrimers[intersect(which(sapply(1:dim(forPrimers)[1], function(i) forPrimers$end[i] - 6138) > -150), which(sapply(1:dim(forPrimers)[1], function(i) forPrimers$end[i] - 6138) < 0)),]
+revPrimers2 <- revPrimers[intersect(which(sapply(1:dim(revPrimers)[1], function(i) revPrimers$end[i] - 6138) > 150), which(sapply(1:dim(revPrimers)[1], function(i) revPrimers$end[i] - 6138) > 0)),]
+
+
+RNA28SReagents <- rbind(forPrimers2[1,], revPrimers2[3,], probes[2,])
+RNA28SReagents$gene <- "28S"
+
+ggplot(RNA28SReagents, aes(
+  xmin = start, xmax = end, y = gene, fill = reagent, label = reagent)) +
+  geom_gene_arrow(
+    arrowhead_height = unit(3, "mm"), arrowhead_width = unit(1, "mm"), 
+    arrow_body_height = unit(10, "mm")) +
+  geom_gene_label(align = "left") + 
+  scale_fill_brewer(palette = "Spectral") + theme_genes() + 
+  ggtitle("") + theme(legend.position = "top")
+
+DT::datatable(
+  RNA28SReagents[,c(15,14,3,4,6,7,12,13,2)],  
+  caption = "Candidate 28S universal reagents set", 
+  rownames = FALSE, 
+  options = list(pageLength = 3, autoWidth = TRUE))
+```
+
+
+
+## References     
+- Cole, J. R., Wang, Q., Fish, J. A., Chai, B., McGarrell, D. M., Sun, Y., Brown, C. T., Porras-Alfaro, A., Kuske, C. R., &#38; Tiedje, J. M. (2014). Ribosomal Database Project: data and tools for high throughput rRNA analysis. [<i>Nucleic Acids Research</i>, <i>42</i>(Database issue), D633.](https://doi.org/10.1093/NAR/GKT1244)  
+
+- Danecek, P., Bonfield, J. K., Liddle, J., Marshall, J., Ohan, V., Pollard, M. O., Whitwham, A., Keane, T., McCarthy, S. A., Davies, R. M., &#38; Li, H. (2021). Twelve years of SAMtools and BCFtools. GigaScience, 10(2), 1–4.[https://doi.org/10.1093/gigascience/giab008](https://doi.org/10.1093/GIGASCIENCE/GIAB008)
+
+<hr /><hr /><br /><br />    
+  
+
+```{r CompEnv, echo = FALSE}
+df_session_platform <- devtools::session_info()$platform %>%
+  unlist(.) %>%
+  as.data.frame(.) %>%
+  tibble::rownames_to_column(.)
+
+colnames(df_session_platform) <- c("Setting", "Value")
+
+kable(
+  df_session_platform,
+  booktabs = T,
+  align = "l",
+  caption = "R Session Info", # complete caption for main document
+  caption.short = " " # "(ref:Reproducibility-SessionInfo-R-environment-caption)" # short caption for LoT
+) %>%
+  kable_styling(full_width = F,
+                latex_options = c(
+                  "hold_position" # stop table floating
+                )
+  )
+```
+  
+  
+
+
