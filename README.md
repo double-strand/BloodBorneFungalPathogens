@@ -1,3 +1,3 @@
 # Blood-borne fungal pathogens nucleic-acids detection  
-## Scope: design qRT-PCR reagents (primers and probe) that would detect the whole set of Human blood-borne fungal pathogens.  
+## Scope: Design nucleic-acid reagents (primers and probes) for the detection and quantification of any fungal species belonging to the set of documented human pathogens.  
 
