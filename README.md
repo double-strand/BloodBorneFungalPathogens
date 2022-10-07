@@ -32,3 +32,6 @@
 #### Notes  
 - Ribosome Small Subunit (SSU) rRNA: 18S.  
 - Ribosome Large Subunit (LSU) rRNA: 28S and 5.8S.  
+  
+ #### workflow. 
+![](assets/FungalrRNAdetectionWF.jpeg). 
