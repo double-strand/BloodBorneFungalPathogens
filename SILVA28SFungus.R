@@ -23,15 +23,30 @@ TargetSpecies <- c("Mucorales", "Aspergillus", "Fusarium", "Alternaria",
 # getting SILVA database latest version number  
 silva_latest_version <- str_trim(read_file("https://www.arb-silva.de/fileadmin/silva_databases/current/VERSION.txt"))
 
+# SILVA URL
+silva_url <- "https://www.arb-silva.de/fileadmin/silva_databases/"
+
 # reading the SILVA LSU 28S sequence data   
-silva28S <- readDNAStringSet("https://www.arb-silva.de/fileadmin/silva_databases/release_138_1/Exports/SILVA_138.1_LSURef_NR99_tax_silva.fasta.gz")
+silva28S <- readDNAStringSet(
+  paste0(
+    silva_url, 
+    "release_", 
+    silva_latest_version, 
+    "/Exports//SILVA_", 
+    silva_latest_version, 
+    "_LSURef_NR99_tax_silva.fasta.gz"
+    )
+  )
 
 # selecting fungus entries
 silvaFungi28S <- silva28S[grep("Fungi", names(silva28S), value = T)]
 
 # setting SILVA species into a dataframe object
-SILVA_28S_FungalSpecies <- as.data.frame(names(silvaFungi28S)) %>% tidyr::separate(`names(silvaFungi28S)`, c("SILVA_ID", "taxonomy"), sep = "\\s")
+SILVA_28S_FungalSpecies <- as.data.frame(names(silvaFungi28S)) %>%
+  tidyr::separate(`names(silvaFungi28S)`, c("SILVA_ID", "taxonomy"), sep = "\\s")
 
 # subsetting the SILVA_28S_FungalSpecies for the target species
 SILVA_28S_TargetSpecies <- SILVA_28S_FungalSpecies[unlist(sapply(TargetSpecies, function(s) grep(s, SILVA_28S_FungalSpecies$taxonomy))),]
+
+
 
