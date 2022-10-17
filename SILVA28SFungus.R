@@ -43,11 +43,11 @@ silvaFungi28S <- silva28S[grep("Fungi", names(silva28S), value = T)]
 
 # setting SILVA species into a dataframe object
 SILVA_28S_FungalSpecies <- as.data.frame(names(silvaFungi28S)) %>%
-  tidyr::separate(`names(silvaFungi28S)`, c("SILVA_ID", "taxonomy"), sep = "\\s")
+  tidyr::separate(`names(silvaFungi28S)`, c("SILVA_ID", "taxonomy"), sep = "Eukaryota;")
 
-# subsetting the SILVA_28S_FungalSpecies for the target species 
+# subsetting the SILVA_28S_Fungal Species for the target species 
 SILVA_28S_TargetSpecies <- SILVA_28S_FungalSpecies[unlist(sapply(TargetSpecies, function(s) grep(s, SILVA_28S_FungalSpecies$taxonomy))),] %>% 
-  tidyr::separate(., col = taxonomy, into = c("Domain", "Clade", "Supergroup", "Group", "Kingdom", "Phylum", "Subphylum", "Class", "Order", "Family", "Genus", "Species"), ";", convert = T)
+  tidyr::separate(., col = taxonomy, into = c("Clade", "Supergroup", "Group", "Kingdom", "Phylum", "Subphylum", "Class", "Order", "Family", "Genus", "Species", "Isolate"), ";", convert = T)
 
 
 
