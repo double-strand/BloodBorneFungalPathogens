@@ -15,10 +15,7 @@ sapply(c("Biostrings", "data.table", "dplyr", "ggplot2",
          "kableExtra", "msa", "seqinr", "rvest","taxize","tidyverse"), 
        library, character.only = TRUE)
 # setting the list of fungal sepcies to detect  
-TargetSpecies <- c("Mucorales", "Aspergillus", "Fusarium", "Alternaria", 
-                   "Scedosporium", "Aureobasidium", "Candida", "Cryptococcus", 
-                   "Malassezia", "Pneumocystis", "Histoplasma", "Blastomyces", 
-                   "Coccidioides", "Trichophyton", "Microsporum")
+TargetSpecies <- read_file("assets/targetSpecies.txt", header = T, skip = 2)
 
 # getting SILVA database latest version number  
 silva_latest_version <- str_trim(read_file("https://www.arb-silva.de/fileadmin/silva_databases/current/VERSION.txt"))

@@ -1,0 +1,25 @@
+# Pan-fungal target species
+# 2022-10-17
+TaxonomicLabel
+Mucorales
+Aspergillus
+Fusarium
+Alternaria
+Scedosporium
+Aureobasidium
+Candida
+Cryptococcus
+Malassezia
+Pneumocystis
+Histoplasma
+Blastomyces
+Coccidioides
+Trichophyton
+Microsporum
+Paecilomyces
+Purpureocillium
+Scopulariopsis
+Acremonium
+Phialophora,Exophiala
+Curvularia
+Bipolaris
