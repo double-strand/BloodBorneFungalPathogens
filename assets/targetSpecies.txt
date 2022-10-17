@@ -20,6 +20,7 @@ Paecilomyces
 Purpureocillium
 Scopulariopsis
 Acremonium
-Phialophora,Exophiala
+Phialophora
+Exophiala
 Curvularia
 Bipolaris
