@@ -1,5 +1,6 @@
 ---
 title: "Human blood-borne fungal rRNA"
+subtitle: "pan fungal-rRNA sequence detection project"  
 author: "double-strand - Fort Worth Diagnostics"
 date: "Aug 22nd, 2022"
 output:
@@ -13,7 +14,6 @@ output:
   pdf_document:
     toc: yes
     toc_depth: '3'
-subtitle: pan fungi rRNA 28S, 18S and 5.8S sequence detection project
 ---
 
 version#: `r Sys.time()`
@@ -111,6 +111,7 @@ DT::datatable(
 
 # subsetting the SILVA_28S_FungalSpecies for the target species
 SILVA_28S_TargetSpecies <- SILVA_28S_FungalSpecies[unlist(sapply(TargetSpecies, function(s) grep(s, SILVA_28S_FungalSpecies$taxonomy))),]
+
 
 write.table(SILVA_28S_TargetSpecies[,1], "databases/SILVA/SILVA_138.1_LSURef_NR99_targetIsolates", row.names = F, quote = F, col.names = F)
 
@@ -604,6 +605,7 @@ writeLines(c(primer4Header, SILVA_18S, primer4Footer), fileCon)
 close(fileCon)
 
 system("primer3_core databases/SILVA/SILVA_138.1_SSURef_NR99.rdf")
+
 
 
 # system("clustalo --threads=2 -i databases/SILVA/SILVA_138.1_SSURef_NR99_Mucoromycota.fasta -o databases/SILVA/SILVA_138.1_SSURef_NR99_Mucoromycota.aln")
