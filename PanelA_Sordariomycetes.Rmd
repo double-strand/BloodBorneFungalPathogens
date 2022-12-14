@@ -1,0 +1,326 @@
+---
+title: "PanelA Sordariomycetes"
+subtitle: "pan fungal-rRNA sequence detection project" 
+author: "double-strand - Fort Worth Diagnostics - Dept. of Pathology St. Jude Children’s Research Hospital"
+date: "Nov 25th, 2022"
+output:
+  html_document:
+    theme: journal
+    highlight: tango
+    code_folding: hide
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+---
+
+version#: `r Sys.time()`
+
+
+
+# Project: design nucleic-acid reagents (primers and probes) for the detection and quantification of fungal species belonging to the set of documented human pathogens.  
+
+## This document concerns the Panel A Sordariomycetes Class.  
+  
+### Resources    
+#### Data  
+- the [SILVA SSU and LSU Ref NR 99 data](https://www.arb-silva.de/documentation/release-1381/);  
+  
+#### Software package    
+- The [R environment for statistical computing](https://www.r-project.org/);  
+- The R [Biostrings](https://bioconductor.org/packages/release/bioc/vignettes/Biostrings/inst/doc/BiostringsQuickOverview.pdf) package;    
+- The R [msa](https://bioconductor.org/packages/release/bioc/html/msa.html) package;   
+- The R [rprimer](https://bioconductor.org/packages/release/bioc/manuals/rprimer/man/rprimer.pdf) package;  
+- The R [odseq](https://www.bioconductor.org/packages/release/bioc/manuals/odseq/man/odseq.pdf) package;  
+  
+### Methods  
+- The SILVA SSU Ref NR 99 sequence multifasta data file was subsetted for its Sordariomycetes content.  This subset featured 379 SSU 18S rRNA sequence records.  
+- The 379 rRNA sequences were aligned with the multiple sequence alignment (msa) program Clustal Omega.  A consensus sequence was derived from the msa output.  The consensus sequence was passed to the R rprimer package designOligos() function which returned a list of primers and probes according to some biochemical specifications (e.g. GC content, Tm, maximum number of variants of each primer etc...).  The primers and probes set was then passed to the R rprimer package designAssays() function, requiring an amplicon length no more than 200 bp.  No valid assay were returned.  
+
+- The Sordariomycetes subset was then filtered out for Orders' entries assumed not to belong to Human pathogens: it included the Hypocreales, the Xylariales and the Magnaporthales.  
+
+  
+```{r packages, echo=T, message=FALSE, warning=FALSE, results='hide'}
+### Dependencies and settings
+#attaching libraries
+sapply(c("Biostrings", "data.table", "dplyr", "ggplot2", 
+         "kableExtra", "msa", "odseq","rentrez", "rprimer","seqinr", "taxize",
+         "tidyverse"), library, character.only = TRUE)
+```
+  
+# Small subunit ribosomal ribonucleic acid (SSU) (18S)    
+*SILVA Ref NR 99 138.1 SSU 18S target species' content*  
+```{r silva18S, echo=T, message=FALSE, warning=FALSE, results='asis'}
+# Panel A set
+panelA <- c("Mucorales", "Eurotiales", "Sordariomycetes", "Dothideomycetes")
+
+# getting SILVA database latest version number  
+silva_latest_version <- str_trim(read_file("https://www.arb-silva.de/fileadmin/silva_databases/current/VERSION.txt"))
+
+# SILVA URL
+silva_url <- "https://www.arb-silva.de/fileadmin/silva_databases/"
+
+# reading the SILVA LSU 28S sequence data   
+# silva18S <- readDNAStringSet(
+#   paste0(
+#     silva_url,
+#     "release_",
+#     silva_latest_version,
+#     "/Exports//SILVA_",
+#     silva_latest_version,
+#     "_SSURef_NR99_tax_silva.fasta.gz"
+#     )
+#   )
+
+## fasta data file saved on local nodes and then read from it. 
+silva18S <- readRDS("silva18S.rds")
+
+# selecting fungus entries
+silvaFungi18S <- silva18S[grep("Fungi", names(silva18S), value = T)]
+
+# getting 18S sequence length distribution
+SILVA18S_seqLength.stat <- summary(sapply(1:length(silvaFungi18S), function(i) length(silvaFungi18S[[i]])))
+silvaFungi18S_seqLength <- sapply(1:length(silvaFungi18S), function(i) length(silvaFungi18S[[i]]))
+#filtering out sequence entries that are either too long or too short
+silvaFungi18S <- silvaFungi18S[which(silvaFungi18S_seqLength > SILVA18S_seqLength.stat[2] & silvaFungi18S_seqLength < SILVA18S_seqLength.stat[5])]
+
+
+PanelA_silvaSSU <- lapply(panelA, function(s) silvaFungi18S[names(silvaFungi18S) %in%
+                                                             grep(s, names(silvaFungi18S), value = T)]) 
+
+# setting SILVA species into a dataframe object
+PanelA_silvaSSU_Species.list <- lapply(1:length(panelA), function(i) as.data.frame(names(PanelA_silvaSSU[[i]])) %>% 
+                                         tidyr::separate(`names(PanelA_silvaSSU[[i]])`, c("SILVA_ID", "taxonomy"), sep = "Eukaryota;"))
+
+for(i in 1:length(panelA)){
+  PanelA_silvaSSU_Species.list[[i]]$set <- panelA[i]
+  PanelA_silvaSSU_Species.list[[i]]$panel <- "panelA"
+}
+
+PanelA_silvaSSU_Species.df <- do.call(rbind, PanelA_silvaSSU_Species.list)
+
+
+# subsetting the SILVA_28S_Fungal Species for the target species 
+PanelA_silvaSSU_Species.df <- PanelA_silvaSSU_Species.df %>% 
+  tidyr::separate(., col = taxonomy, into = c("Domain",
+                                              "Clade", 
+                                              "Supergroup", 
+                                              "Group", 
+                                              "Kingdom", 
+                                              "Subkingdom",
+                                              "Phylum", 
+                                              "Subphylum", 
+                                              "Class", 
+                                              "Order", 
+                                              "Family", 
+                                              "Genus"), ";", convert = T)
+
+# keeping relevant taxonomy levels
+PanelA_silvaSSU_Species.df <- PanelA_silvaSSU_Species.df[,c(15,14,1,6:13)]
+```
+
+```{r SordariomycetesTab, results="asis", echo=F}
+DT::datatable(PanelA_silvaSSU_Species.df[PanelA_silvaSSU_Species.df$Class == "Sordariomycetes",][,c(1:3,8:11)], caption = "SILVA SSU Sordariomycetes", rownames = F, options = list(pageLength = 10, autoWidth = TRUE))
+#DT Table \@ref(tab:SordariomycetesTab)
+#cat("<table>", paste0("<caption>", "(#tab:SordariomycetesTab)", "test", "</caption>"), "</table>", sep = "\n")
+```  
+  
+
+
+- The current SILVA release#138.1 database features 379 entries for the Sordariomycetes Class.   
+  
+## SILVA 138.1 SSU Sordariomycetes Orders  
+```{r silva18S_species, echo=T, message=FALSE, warning=FALSE, results='asis'}
+Sordariomycetes.df <- PanelA_silvaSSU_Species.df[PanelA_silvaSSU_Species.df$Class == "Sordariomycetes",][,c(9:11)]
+ 
+DT::datatable(as.data.frame(table(Sordariomycetes.df$Order)) %>% dplyr::rename(Order = 1), caption = "SILVA 138.1 SSU Sordariomycetes Orders", rownames = F, options = list(pageLength = 30, autoWidth = TRUE))
+```
+
+  
+  
+### SSU Sordariomycetes 379 entries consensus profile    
+```{r Sordariomycetes18S_msa, echo=T, message=FALSE, warning=FALSE, results='hide'}
+# subsetting
+silvaSordariomycetes18S <- silvaFungi18S[grep("Sordariomycetes", names(silvaFungi18S), value = T)]
+
+names(silvaSordariomycetes18S) <- gsub("Eukaryota;Amorphea;Obazoa;Opisthokonta;Nucletmycea;Fungi;Dikarya;Ascomycota;Pezizomycotina;", "", names(silvaSordariomycetes18S))
+
+# msa
+#silvaSordariomycetes18S.msa <- msa(silvaSordariomycetes18S, method = "ClustalOmega")
+silvaSordariomycetes18S.msa <- readRDS("silvaSordariomycetes18S.msa.rds")
+
+silvaSordariomycetes18S.cons <- rprimer::consensusProfile(silvaSordariomycetes18S.msa, ambiguityThreshold = 0.05)
+
+rprimer::plotData(silvaSordariomycetes18S.cons)
+
+#tmp <- rprimer::designOligos(silvaSordariomycetes18S.cons, maxDegeneracyPrimer = 1, maxDegeneracyProbe = 1)
+#tmp2 <- designAssays(tmp)
+```
+
+### SSU Sordariomycetes subset1 consensus profile   
+- The Hypocreales, the Xylariales and the Magnaporthales were selected out: the resulting 222 Sordariomycetes subset was passed to the same workflow (i.e. msa, consensus, primers and probes and assay design)  
+```{r Sordariomycetes18S_subset, echo=T, message=FALSE, warning=FALSE, results='asis'}
+# subsetting
+silvaSordariomycetes18S_subset1 <- silvaSordariomycetes18S[!names(silvaSordariomycetes18S) %in% grep("Hypocreales|Xylariales|Magnaporthales|uncultured|metagenome", names(silvaSordariomycetes18S), value = T)]
+
+silvaSordariomycetes18S_subset1.df <- as.data.frame(names(silvaSordariomycetes18S_subset1)) %>% 
+  tidyr::separate(`names(silvaSordariomycetes18S_subset1)`, c("SILVA_ID", "taxonomy"), sep = "Sordariomycetes;")  %>% 
+  tidyr::separate(., col = taxonomy, into = c("Order", "Family", "Genus"), ";", convert = T)
+
+DT::datatable(as.data.frame(table(silvaSordariomycetes18S_subset1.df$Order)) %>% 
+                dplyr::rename(Order = 1), 
+              caption = "SILVA 138.1 SSU Sordariomycetes subset1 Orders", 
+              rownames = F, options = list(pageLength = 30, autoWidth = TRUE))
+  
+```
+  
+```{r Sordariomycetes18S_subsetProfile, echo=T, message=FALSE, warning=FALSE, results='hide'}
+silvaSordariomycetes18S_subset1.msa <- msa(silvaSordariomycetes18S_subset1, method = "ClustalOmega")
+silvaSordariomycetes18S_subset1.cons <- rprimer::consensusProfile(silvaSordariomycetes18S_subset1.msa, ambiguityThreshold = 0.2)
+#rprimer::plotData(silvaSordariomycetes18S_subset1.cons)
+
+# getting reagents from the silvaSordariomycetes18S_subset1.cons object
+#silvaSordariomycetes18S.reagents <- rprimer::designOligos(silvaSordariomycetes18S_subset1.cons, maxDegeneracyPrimer = 4, maxDegeneracyProbe = 4)
+#silvaSordariomycetes18S.assay <- designAssays(silvaSordariomycetes18S.reagents)
+## Error: No assays were found.
+# 
+Sordariomycetes18Soutliers <- odseq(silvaSordariomycetes18S_subset1.msa, distance_metric = "linear", B = 1000, threshold = 0.025)
+
+Sordariomycetes18Soutliers.df <- as.data.frame(which(Sordariomycetes18Soutliers==TRUE)) %>% tibble::rownames_to_column(., var = "taxonomy")
+
+silvaSordariomycetes18S_subset1.df <- as.data.frame(names(silvaSordariomycetes18S_subset1)) %>% 
+  tidyr::separate(`names(silvaSordariomycetes18S_subset1)`, c("SILVA_ID", "taxonomy"), sep = "Sordariomycetes;")  %>% 
+  tidyr::separate(., col = taxonomy, into = c("Order", "Family", "Genus"), ";", convert = T)
+
+silvaSordariomycetes18S_subset2 <- silvaSordariomycetes18S_subset1[-which(Sordariomycetes18Soutliers == T),]
+
+silvaSordariomycetes18S_subset2.msa <- msa(silvaSordariomycetes18S_subset2, method = "ClustalOmega")
+
+silvaSordariomycetes18S_subset2.cons <- rprimer::consensusProfile(silvaSordariomycetes18S_subset2.msa, ambiguityThreshold = 0.2)
+#rprimer::plotData(silvaSordariomycetes18S_subset2.cons)
+
+#silvaSordariomycetes18S.reagents <- rprimer::designOligos(silvaSordariomycetes18S_subset2.cons, maxDegeneracyPrimer = 4, maxDegeneracyProbe = 4)
+# 
+#silvaSordariomycetes18S.assay <- designAssays(silvaSordariomycetes18S.reagents)
+# Sordariomycetes18Soutliers <- odseq(silvaSordariomycetes18S_subset1.msa, distance_metric = "affine", B = 1000)
+
+## second round 
+Sordariomycetes18Soutliers2 <- odseq(silvaSordariomycetes18S_subset2.msa, distance_metric = "linear", B = 1000, threshold = 0.025)
+silvaSordariomycetes18S_subset3 <- silvaSordariomycetes18S_subset2[-which(Sordariomycetes18Soutliers2 == T),]
+
+silvaSordariomycetes18S_subset3.msa <- msa(silvaSordariomycetes18S_subset3, method = "ClustalOmega")
+silvaSordariomycetes18S_subset3.cons <- rprimer::consensusProfile(silvaSordariomycetes18S_subset3.msa, ambiguityThreshold = 0.2)
+#rprimer::plotData(silvaSordariomycetes18S_subset3.cons)
+
+#silvaSordariomycetes18S.reagents <- rprimer::designOligos(silvaSordariomycetes18S_subset3.cons, maxDegeneracyPrimer = 4, maxDegeneracyProbe = 4)
+
+# third round
+Sordariomycetes18Soutliers3 <- odseq(silvaSordariomycetes18S_subset3.msa, distance_metric = "linear", B = 1000, threshold = 0.025)
+silvaSordariomycetes18S_subset4 <- silvaSordariomycetes18S_subset3[-which(Sordariomycetes18Soutliers3 == T),]
+
+silvaSordariomycetes18S_subset4.msa <- msa(silvaSordariomycetes18S_subset4, method = "ClustalOmega")
+silvaSordariomycetes18S_subset4.cons <- rprimer::consensusProfile(silvaSordariomycetes18S_subset4.msa, ambiguityThreshold = 0.2)
+#rprimer::plotData(silvaSordariomycetes18S_subset4.cons)
+#silvaSordariomycetes18S.reagents <- rprimer::designOligos(silvaSordariomycetes18S_subset4.cons, maxDegeneracyPrimer = 4, maxDegeneracyProbe = 4)
+#silvaSordariomycetes18S.assay <- designAssays(silvaSordariomycetes18S.reagents)
+
+# fourth round
+Sordariomycetes18Soutliers4 <- odseq(silvaSordariomycetes18S_subset4.msa, distance_metric = "linear", B = 1000, threshold = 0.025)
+silvaSordariomycetes18S_subset5 <- silvaSordariomycetes18S_subset4[-which(Sordariomycetes18Soutliers4 == T),]
+
+silvaSordariomycetes18S_subset5.msa <- msa(silvaSordariomycetes18S_subset5, method = "ClustalOmega")
+silvaSordariomycetes18S_subset5.cons <- rprimer::consensusProfile(silvaSordariomycetes18S_subset5.msa, ambiguityThreshold = 0.2)
+#rprimer::plotData(silvaSordariomycetes18S_subset5.cons)
+#silvaSordariomycetes18S.reagents <- rprimer::designOligos(silvaSordariomycetes18S_subset5.cons, maxDegeneracyPrimer = 4, maxDegeneracyProbe = 4)
+
+#silvaSordariomycetes18S.assay <- designAssays(silvaSordariomycetes18S.reagents)
+
+# fifth round
+Sordariomycetes18Soutliers5 <- odseq(silvaSordariomycetes18S_subset5.msa, distance_metric = "linear", B = 1000, threshold = 0.025)
+silvaSordariomycetes18S_subset6 <- silvaSordariomycetes18S_subset5[-which(Sordariomycetes18Soutliers5 == T),]
+
+silvaSordariomycetes18S_subset6.msa <- msa(silvaSordariomycetes18S_subset6, method = "ClustalOmega")
+silvaSordariomycetes18S_subset6.cons <- rprimer::consensusProfile(silvaSordariomycetes18S_subset6.msa, ambiguityThreshold = 0.2)
+#rprimer::plotData(silvaSordariomycetes18S_subset6.cons)
+#silvaSordariomycetes18S.reagents <- rprimer::designOligos(silvaSordariomycetes18S_subset6.cons, maxDegeneracyPrimer = 4, maxDegeneracyProbe = 4)
+
+# sixth round
+Sordariomycetes18Soutliers6 <- odseq(silvaSordariomycetes18S_subset6.msa, distance_metric = "linear", B = 1000, threshold = 0.025)
+silvaSordariomycetes18S_subset7 <- silvaSordariomycetes18S_subset6[-which(Sordariomycetes18Soutliers6 == T),]
+
+silvaSordariomycetes18S_subset7.msa <- msa(silvaSordariomycetes18S_subset7, method = "ClustalOmega")
+silvaSordariomycetes18S_subset7.cons <- rprimer::consensusProfile(silvaSordariomycetes18S_subset7.msa, ambiguityThreshold = 0.2)
+#rprimer::plotData(silvaSordariomycetes18S_subset7.cons)
+silvaSordariomycetes18S.reagents <- rprimer::designOligos(silvaSordariomycetes18S_subset7.cons, maxDegeneracyPrimer = 4, maxDegeneracyProbe = 4)
+
+silvaSordariomycetes18S.assay <- designAssays(silvaSordariomycetes18S.reagents)
+
+silvaSordariomycetes18S_subset7.df <- as.data.frame(names(silvaSordariomycetes18S_subset7)) %>% 
+  tidyr::separate(`names(silvaSordariomycetes18S_subset7)`, c("SILVA_ID", "taxonomy"), sep = "Sordariomycetes;")  %>% 
+  tidyr::separate(., col = taxonomy, into = c("Order", "Family", "Genus"), ";", convert = T)
+
+
+silvaSordariomycetes18S.assay <- unique(silvaSordariomycetes18S.assay[,c(1,2,3,6:9,20,21,24,25,26,27,38,39,44,45,46,47,60,61)])
+#setdiff(unique(Sordariomycetes.df$Order), unique(silvaSordariomycetes18S_subset7.df$Order))
+```
+  
+### Panel A Sordariomycetes subset candidate Primers and Probes     
+```{r SordariomycetesAssays, echo=T, message=FALSE, warning=FALSE, results='asis'}
+DT::datatable(as.data.frame(table(silvaSordariomycetes18S_subset7.df$Order)) %>%
+                dplyr::rename(Order = 1),
+              caption = "SILVA 138.1 SSU Sordariomycetes Orders included in the assay design",
+              rownames = F, options = list(pageLength = 30, autoWidth = TRUE))
+
+DT::datatable(as.data.frame(silvaSordariomycetes18S.assay), caption = "Candidates Sordariomycetes 18S rRNA qRT-PCR reagents", rownames = F, options = list(pageLength = 20, autoWidth = TRUE)) %>% DT::formatRound(columns=c("gcContentFwd", "tmFwd","gcContentRev", "tmRev", "gcContentPr", "tmPr"), digits=2)
+
+```
+  
+### Panel A Sordariomycetes orders excluded from the assay design  
+```{r SordariomycetesExcluded, echo=T, message=FALSE, warning=FALSE, results='asis'}
+
+Sordariomycetes.dfExcl <- Sordariomycetes.df[Sordariomycetes.df$Order %in% setdiff(unique(Sordariomycetes.df$Order), unique(silvaSordariomycetes18S_subset7.df$Order)),]
+
+DT::datatable(as.data.frame(table(Sordariomycetes.dfExcl$Order)) %>%
+               dplyr::rename(Order = 1),
+              caption = "SILVA 138.1 SSU Sordariomycetes Orders excluded",
+              rownames = F, options = list(pageLength = 30, autoWidth = TRUE))
+```
+
+
+- <b>Conclusion: filtering out SILVA entries known to not belong to human pathogens reduced the sequence variability and allowed the design of candidate qRT-PCR assays.</b>  
+  
+
+
+## References     
+- Yilmaz, P., Parfrey, L. W., Yarza, P., Gerken, J., Pruesse, E., Quast, C., Schweer, T., Peplies, J., Ludwig, W., &#38; Glöckner, F. O. (2014). The SILVA and “All-species Living Tree Project (LTP)” taxonomic frameworks. [<i>Nucleic Acids Research</i>, <i>42</i>(D1), D643–D648.](https://doi.org/10.1093/NAR/GKT1209)   
+  
+- Persson, S., Larsson, C., Simonsson, M., &#38; Ellström, P. (2022). rprimer: an R/bioconductor package for design of degenerate oligos for sequence variable viruses. [BMC Bioinformatics</i>, 23(1), 1–18.](https://doi.org/10.1186/s12859-022-04781-0)  
+
+
+<hr /><hr /><br /><br />    
+  
+
+```{r CompEnv, echo = FALSE}
+df_session_platform <- devtools::session_info()$platform %>%
+  unlist(.) %>%
+  as.data.frame(.) %>%
+  tibble::rownames_to_column(.)
+
+colnames(df_session_platform) <- c("Setting", "Value")
+
+kable(
+  df_session_platform,
+  booktabs = T,
+  align = "l",
+  caption = "R Session Info", # complete caption for main document
+  caption.short = " " # "(ref:Reproducibility-SessionInfo-R-environment-caption)" # short caption for LoT
+) %>%
+  kable_styling(full_width = F,
+                latex_options = c(
+                  "hold_position" # stop table floating
+                )
+  )
+```
+  
