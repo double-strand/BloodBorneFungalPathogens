@@ -1,0 +1,194 @@
+---
+title: "PanelA Dothideomycetes"
+subtitle: "pan fungal-rRNA sequence detection project" 
+author: "double-strand - Fort Worth Diagnostics - Dept. of Pathology St. Jude Children’s Research Hospital"
+date: "Dec 14th, 2022"
+output:
+  html_document:
+    theme: journal
+    highlight: tango
+    code_folding: hide
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+---
+
+version#: `r Sys.time()`
+
+
+
+# Project: design nucleic-acid reagents (primers and probes) for the detection and quantification of fungal species belonging to the set of documented human pathogens.  
+
+## This document concerns the Panel A Dothideomycetes Class.  
+  
+### Resources    
+#### Data  
+- the [SILVA SSU and LSU Ref NR 99 data](https://www.arb-silva.de/documentation/release-1381/);  
+  
+#### Software package    
+- The [R environment for statistical computing](https://www.r-project.org/);  
+- The R [Biostrings](https://bioconductor.org/packages/release/bioc/vignettes/Biostrings/inst/doc/BiostringsQuickOverview.pdf) package;    
+- The R [msa](https://bioconductor.org/packages/release/bioc/html/msa.html) package;   
+- The R [rprimer](https://bioconductor.org/packages/release/bioc/manuals/rprimer/man/rprimer.pdf) package;  
+- The R [odseq](https://www.bioconductor.org/packages/release/bioc/manuals/odseq/man/odseq.pdf) package;  
+  
+### Methods  
+- The SILVA SSU Ref NR 99 sequence multifasta data file was subsetted for its Dothideomycetes content.  This subset featured 109 LSU 28S rRNA sequence records.  
+- The 109 rRNA sequences were aligned with the multiple sequence alignment (msa) program Clustal Omega.  A consensus sequence was derived from the msa output.  The consensus sequence was passed to the R rprimer package designOligos() function which returned a list of primers and probes according to some biochemical specifications (e.g. GC content, Tm, maximum number of variants of each primer etc...).  The primers and probes set was then passed to the R rprimer package designAssays() function, requiring an amplicon length no more than 200 bp.  No valid assay were returned.  
+
+- The Dothideomycetes subset was then filtered out for Orders' entries assumed not to belong to Human pathogens: 
+
+  
+```{r packages, echo=T, message=FALSE, warning=FALSE, results='hide'}
+### Dependencies and settings
+#attaching libraries
+sapply(c("Biostrings", "data.table", "dplyr", "ggplot2", 
+         "kableExtra", "msa", "rentrez", "rprimer","seqinr", "taxize","tidyverse"), 
+       library, character.only = TRUE)
+```
+  
+# Large subunit ribosomal ribonucleic acid (LSU) (28S)    
+*SILVA Ref NR 99 138.1 LSU 18S target species' content*  
+```{r silvaL28S, echo=T, message=FALSE, warning=FALSE, results='asis'}
+# Panel A set
+panelA <- c("Mucorales", "Eurotiales", "Sordariomycetes", "Dothideomycetes")
+
+# getting SILVA database latest version number  
+silva_latest_version <- str_trim(read_file("https://www.arb-silva.de/fileadmin/silva_databases/current/VERSION.txt"))
+
+# SILVA URL
+silva_url <- "https://www.arb-silva.de/fileadmin/silva_databases/"
+
+# reading the SILVA LSU 28S sequence data   
+# silva18S <- readDNAStringSet(
+#   paste0(
+#     silva_url,
+#     "release_",
+#     silva_latest_version,
+#     "/Exports//SILVA_",
+#     silva_latest_version,
+#     "_SSURef_NR99_tax_silva.fasta.gz"
+#     )
+#   )
+
+## fasta data file saved on local nodes and then read from it. 
+silva28S <- readRDS("silva28S.rds")
+
+# selecting fungus entries
+silvaFungi28S <- silva28S[grep("Fungi", names(silva28S), value = T)]
+
+# getting 18S sequence length distribution
+SILVA28S_seqLength.stat <- summary(sapply(1:length(silvaFungi28S), function(i) length(silvaFungi28S[[i]])))
+silvaFungi28S_seqLength <- sapply(1:length(silvaFungi28S), function(i) length(silvaFungi28S[[i]]))
+#filtering out sequence entries that are either too long or too short
+silvaFungi28S <- silvaFungi18S[which(silvaFungi28S_seqLength > SILVA28S_seqLength.stat[2] & silvaFungi28S_seqLength < SILVA28S_seqLength.stat[5])]
+
+
+PanelA_silvaLSU <- lapply(panelA, function(s) silvaFungi28S[names(silvaFungi28S) %in%
+                                                             grep(s, names(silvaFungi28S), value = T)]) 
+
+# setting SILVA species into a dataframe object
+PanelA_silvaLSU_Species.list <- lapply(1:length(panelA), function(i) as.data.frame(names(PanelA_silvaLSU[[i]])) %>% 
+                                         tidyr::separate(`names(PanelA_silvaLSU[[i]])`, c("SILVA_ID", "taxonomy"), sep = "Eukaryota;"))
+
+for(i in 1:length(panelA)){
+  PanelA_silvaLSU_Species.list[[i]]$set <- panelA[i]
+  PanelA_silvaLSU_Species.list[[i]]$panel <- "panelA"
+}
+
+PanelA_silvaLSU_Species.df <- do.call(rbind, PanelA_silvaLSU_Species.list)
+
+
+# subsetting the SILVA_28S_Fungal Species for the target species 
+PanelA_silvaLSU_Species.df <- PanelA_silvaLSU_Species.df %>% 
+  tidyr::separate(., col = taxonomy, into = c("Domain",
+                                              "Clade", 
+                                              "Supergroup", 
+                                              "Group", 
+                                              "Kingdom", 
+                                              "Subkingdom",
+                                              "Phylum", 
+                                              "Subphylum", 
+                                              "Class", 
+                                              "Order", 
+                                              "Family", 
+                                              "Genus"), ";", convert = T)
+
+# keeping relevant taxonomy levels
+PanelA_silvaLSU_Species.df <- PanelA_silvaLSU_Species.df[,c(15,14,1,6:13)]
+```
+
+```{r DothideomycetesTab, results="asis", echo=F}
+DT::datatable(PanelA_silvaLSU_Species.df[PanelA_silvaLSU_Species.df$Class == "Dothideomycetes",][,c(1:3,8:11)], caption = "SILVA SSU Dothideomycetes", rownames = F, options = list(pageLength = 10, autoWidth = TRUE))
+#DT Table \@ref(tab:SordariomycetesTab)
+#cat("<table>", paste0("<caption>", "(#tab:SordariomycetesTab)", "test", "</caption>"), "</table>", sep = "\n")
+```  
+  
+
+- The current SILVA release#138.1 LSU 28S database features 109 entries for the Dothideomycetes Class.   
+  
+## SILVA 138.1 LSU Dothideomycetes Orders  
+```{r silva28S_species, echo=T, message=FALSE, warning=FALSE, results='asis'}
+Dothideomycetes.df <- PanelA_silvaSSU_Species.df[PanelA_silvaSSU_Species.df$Class == "Dothideomycetes",][,c(9:11)]
+ 
+DT::datatable(as.data.frame(table(Dothideomycetes.df$Order)) %>% dplyr::rename(Order = 1), caption = "SILVA 138.1 LSU Dothideomycetes Orders", rownames = F, options = list(pageLength = 30, autoWidth = TRUE))
+```
+
+  
+  
+### LSU Dothideomycetes 109 entries consensus profile    
+```{r Dothideomycetes28S_msa, echo=T, message=FALSE, warning=FALSE, results='hide'}
+# subsetting
+Dothideomycetes28S <- silvaFungi18S[grep("Dothideomycetes", names(silvaFungi28S), value = T)]
+
+names(Dothideomycetes28S) <- gsub("Eukaryota;Amorphea;Obazoa;Opisthokonta;Nucletmycea;Fungi;Dikarya;Ascomycota;Pezizomycotina;", "", names(Dothideomycetes28S))
+
+# msa
+Dothideomycetes28S.msa <- msa(Dothideomycetes28S, method = "ClustalOmega")
+
+Dothideomycetes28S.cons <- rprimer::consensusProfile(Dothideomycetes28S.msa, ambiguityThreshold = 0.05)
+
+rprimer::plotData(Dothideomycetes28S.cons)
+
+# 1st attempt to derive regants
+Dothideomycetes28S.reagents <- rprimer::designOligos(Dothideomycetes28S.cons, maxDegeneracyPrimer = 2, maxDegeneracyProbe = 4)
+Dothideomycetes28S.assay <- designAssays(Dothideomycetes28S.reagents)
+```
+
+
+
+
+## References     
+- Yilmaz, P., Parfrey, L. W., Yarza, P., Gerken, J., Pruesse, E., Quast, C., Schweer, T., Peplies, J., Ludwig, W., &#38; Glöckner, F. O. (2014). The SILVA and “All-species Living Tree Project (LTP)” taxonomic frameworks. [<i>Nucleic Acids Research</i>, <i>42</i>(D1), D643–D648.](https://doi.org/10.1093/NAR/GKT1209)   
+  
+- Persson, S., Larsson, C., Simonsson, M., &#38; Ellström, P. (2022). rprimer: an R/bioconductor package for design of degenerate oligos for sequence variable viruses. [BMC Bioinformatics</i>, 23(1), 1–18.](https://doi.org/10.1186/s12859-022-04781-0)  
+
+
+<hr /><hr /><br /><br />    
+  
+
+```{r CompEnv, echo = FALSE}
+df_session_platform <- devtools::session_info()$platform %>%
+  unlist(.) %>%
+  as.data.frame(.) %>%
+  tibble::rownames_to_column(.)
+
+colnames(df_session_platform) <- c("Setting", "Value")
+
+kable(
+  df_session_platform,
+  booktabs = T,
+  align = "l",
+  caption = "R Session Info", # complete caption for main document
+  caption.short = " " # "(ref:Reproducibility-SessionInfo-R-environment-caption)" # short caption for LoT
+) %>%
+  kable_styling(full_width = F,
+                latex_options = c(
+                  "hold_position" # stop table floating
+                )
+  )
+```
+  
