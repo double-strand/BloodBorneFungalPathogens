@@ -1,5 +1,5 @@
 # Blood-borne fungal pathogens nucleic-acids detection  
-## Scope: set human fungal pathogens universal primers, i.e. design nucleic-acid reagents (primers and probes) for the detection and quantification of any fungal species belonging to the set of documented human pathogens.  
+## Scope: design human fungal pathogens universal primers, i.e. design nucleic-acid reagents (primers and probes) for the detection and quantification of any fungal species belonging to the set of documented human pathogens.  
     
 ### List of blood-borne fungi:  
 * Mucorales, aka Zygomycetes (Rhizopus, Mucor, Lichthemia, Cunninghamella)  
