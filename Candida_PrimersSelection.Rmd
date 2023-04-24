@@ -1,0 +1,341 @@
+---
+title: "Candida Assay Design"
+subtitle: "universal primer/probe for Candida pathogens" 
+author: "double-strand - FWDX"
+date: "Apr 14th, 2022"
+output: 
+  html_document:
+    theme: journal
+    highlight: tango
+    code_folding: hide
+    toc: true
+    toc_depth: 3
+    toc_float: true
+---
+
+version#: `r Sys.time()`
+
+  
+## Resources     
+- The [National Center for Biotechnology Information (NCBI)](http://www.ncbi.nlm.nih.gov/Entrez/) Entrez Global Query Cross-Database Search System.   
+- The [R environment for statistical computing](https://www.r-project.org/).    
+- The [Biostrings](https://bioconductor.org/packages/release/bioc/html/Biostrings.html) package.    
+- The [R rentrez](https://docs.ropensci.org/rentrez/) package.    
+- The [R msa](https://doi.org/10.1093/bioinformatics/btv494) package.  
+- The [R rprimer](https://doi.org/10.1186/s12859-022-04781-0) package.  
+
+
+
+<br />  
+    
+## Data.    
+* Authoritative Data Sources: 
+  + the National Center for Biotechnology Information (NCBI) Taxonomy database with its Entrez Global Query Cross-Database Search System.  The resource was queried with the R Foundation for Statistical Computing rentrez EUtils NCBI API wrappers.    
+  + the [SILVA SSU and LSU Ref NR 99 data](https://www.arb-silva.de/documentation/release-1381/).  
+  
+## Method. 
+* The NCBI Taxonomy database was queried with Candida common names species in order to get their respective NCBI Taxonomy ID and synonyms.  
+* The SILVA SSU and LSU Ref NR 99 data sets were initially filtered for Saccharomycetales 28S and 18S records.  Subsequently, the Saccharomycetales 28S and 18S sets were partitioned to subsets featuring C. albicans, C. glabrata, C. kefyr, C. krusei, C. parapsilosis, and C. tropicalis records respectively.  
+* 28S and 18S sequence data of a so-called pan-Candidas set featuring records for these 6 taxons were aligned with the R msa implementation of Clustal Omega.  The multiple-alignments were passed to the rprimer package consensusProfile() function.  The rprimer package designOligos() and designAssays() functions were run iteratively in order to produce candidate primers and probes with the minimum amount of sequence degeneracy and with adequat GC content, Tm and amplicon length.  
+* The candidate primers and probes were then selected for their specificity, i.e. their lack of potential cross-reactivity against Human 28S or 18S. 
+  
+## Results.  
+* a set of pan-Candida reagent's set targeting 28S and not cross-reacting to Human 28S (more than 4 miss-matches for the forward, reverse and probe).  
+
+## Log. 
+- April 24th, 2023: run cross-reactivity test of the pan-Candida 28S reagents's sets against Human 28S: released an updated set of non-human cross-reactive pan-Candida reagents's set (targeting 28S).  
+- April 20th, 2023: released a 1st set of pan-Candida reagents's sets and Candida glabrata specific reagents.  
+- April 15th, 2023: retrieved 28S sequence data for the 6 Candidas taxa from the SILVA SSU and LSU Ref NR 99 data
+- April 14th, 2023: Taxonomic data and synonyms.  Scope: mapping species synomys with actual taxonomic entries. 
+  
+
+```{r packages, echo = T, results = 'hide', message = FALSE, warning = FALSE}
+### Dependencies and settings
+#attaching libraries
+sapply(c("ape", "Biostrings", "data.table", "dplyr", "genbankr", "GenomicRanges",
+         "gggenes", "ggplot2", "kableExtra", "knitr", "msa", "read.gb", 
+         "rentrez", "rprimer","seqinr", "rprimer","taxize","tidyverse", "xml2", "XML"), 
+       library, character.only = TRUE)
+
+# the DelayFunction is set for allowing successive GET requests to the NCBI 
+# resource yet preventing 429 Service Unavailable Error
+DelayFunction <- function(SecDelay, f) {
+  function(...) {
+    Sys.sleep(SecDelay)
+    f(...)
+  }
+}
+
+# primers' query function~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+crossreac <- function(subjDb, id, primer){
+# aligning primer queries to organisms subject genomes, for and reverse
+  primerFor.ali <- 
+    lapply(1:length(subjDb), function(i) 
+      pairwiseAlignment(DNAString(primer), subjDb[[i]], type = "local"))
+  
+   primerRev.ali <- lapply(1:length(subjDb), function(i) 
+      pairwiseAlignment(
+        reverseComplement(DNAString(primer)), subjDb[[i]], type = "local"
+        )
+      )
+  
+# getting the local %identity w.r.t. the length of the primer from each pairwise alignment
+  primerFor.pid <- lapply(
+    1:length(subjDb), function(i) 
+      #cbind(as.data.frame(subjDb[[i]]@metadata), 
+       cbind(as.data.frame(names(subjDb)[i]),
+           as.data.frame(pid(primerFor.ali[[i]], type = "PID3")))
+    )
+  
+    primerRev.pid <- lapply(
+      1:length(subjDb), function(i) 
+        cbind(as.data.frame(names(subjDb)[i]), 
+              as.data.frame(pid(primerRev.ali[[i]], type = "PID3")))
+      )
+  
+# reformatting from lists to a dataframe object
+  primerFor.pid <- do.call("rbind", lapply(
+    primerFor.pid, setNames, c("SubjectDE", "PercentIdentity")
+    ))
+  primerFor.pid$Strand = "+"
+  
+  primerRev.pid <- do.call("rbind", lapply(
+    primerRev.pid, setNames, c("SubjectDE", "PercentIdentity")
+    ))
+  primerRev.pid$Strand = "-"
+  primer.df <- rbind(primerFor.pid, primerRev.pid)
+  primer.df$Id <- id
+  primer.df$PercentIdentity <- round(primer.df$PercentIdentity, 2)
+  primer.df <- primer.df[order(-primer.df$PercentIdentity),]
+  return(primer.df[,c(4,1:3)])
+}
+
+######
+findAssay <- function(fungi, msa) {
+  for (k in seq(0,.2,.025)) {
+    #print(k)
+    fungi.cons <- rprimer::consensusProfile(msa, ambiguityThreshold =k)
+    for (i in 1:5){
+      tryCatch({
+        #print(i)
+       fungi.reagents <- rprimer::designOligos(fungi.cons, maxDegeneracyPrimer = i, maxDegeneracyProbe = i)
+        fungi.assay <-  rprimer::designAssays(fungi.reagents)
+        if(exists("fungi.assay")) {
+          break
+        }
+      },error=function(e){cat("ERROR :",conditionMessage(e), "\n")})
+    }
+    if(exists("fungi.assay")) {
+      print(k)
+      print(i)
+      return(cbind(as.data.frame(fungi), unique(fungi.assay[,c(1,2,3,6:9,20,21,24,25,26,27,38,39,44,45,46,47,60,61)])))
+      break
+    }
+    }
+}
+```
+   
+# C. albicans, C. glabrata, C. kefyr, C. krusei, C. parapsilosis, C. tropicalis   
+## NCBI taxonmy db.  
+```{r ncbiTaxodb, echo = TRUE, message = FALSE, warning = FALSE, tidy = TRUE, results = 'asis'}
+Candidas <- c("Candida albicans", "Nakaseomyces glabratus", "Kluyveromyces marxianus ", "Pichia kudriavzevii", "Candida parapsilosis", "Candida tropicalis")
+# querying the NCBI nucleotide resource
+# step#1: query the NCBI taxonomy db for both RSV A and B
+taxo.q <- lapply(
+  Candidas, function(v) entrez_search(
+    db = "taxonomy", 
+    term = paste0(v, "[SCIN]")
+    )
+  )   
+# coercing to a df
+taxo.df <- do.call(rbind, lapply(1:length(taxo.q), function(i) xmlParse(entrez_fetch(db = "taxonomy", taxo.q[[i]]$ids, rettype = "xml")) %>% 
+  XML::xmlToDataFrame()))
+
+taxo.df$OtherNames <- gsub('([a-z])(?=[A-Z])','\\1,', taxo.df$OtherNames,perl = T)
+
+for (i in 1:6){
+  taxo.df$OtherNames[i] <- stringr::str_split(taxo.df$OtherNames[i], ",", simplify = T)
+}
+
+
+DT::datatable(
+  taxo.df[,c(1:4,9)], 
+  caption = "Human respiratory syncytial virus A and B", 
+  rownames = FALSE
+  )
+```
+
+## Pan Candidas 28S. 
+*Source: SILVA LSU Ref NR 99 db.*.   
+```{r SLIVAdb, echo = TRUE, message = FALSE, warning = FALSE, tidy = TRUE, results = 'hide'}
+# 28S
+silva28S <- readRDS("silva28S.rds")
+# selecting fungus entries
+silvaFungi28S <- silva28S[grep("Fungi", names(silva28S), value = T)]
+# selecting Saccharomycetales
+silvaSaccharomycetales28S <- silvaFungi28S[grep("Saccharomycetales", names(silvaFungi28S), value = T)]
+
+# albicans
+albicans <- silvaSaccharomycetales28S[grep("albicans", names(silvaSaccharomycetales28S), value = T)]
+
+# glabrata
+glabrata <- silvaSaccharomycetales28S[grep("glabrata", names(silvaSaccharomycetales28S), value = T)]
+
+# parapsilosis
+parapsilosis <- silvaSaccharomycetales28S[grep("parapsilosis", names(silvaSaccharomycetales28S), value = T)] 
+
+# tropicalis
+tropicalis <- silvaSaccharomycetales28S[grep("tropicalis", names(silvaSaccharomycetales28S), value = T)] 
+
+#kefyr (synomym: Kluyveromyces marxianus)
+kefyr <-  silvaSaccharomycetales28S[grep("Kluyveromyces marxianus", names(silvaSaccharomycetales28S), value = T)] 
+
+#krusei (synomym: Pichia kudriavzevii)
+krusei <- silvaSaccharomycetales28S[grep("Pichia kudriavzevii", names(silvaSaccharomycetales28S), value = T)] 
+
+candidas28S <- c(albicans, glabrata, kefyr, krusei, parapsilosis, tropicalis)
+
+candidas28S.msa <- msa(candidas28S, method = "ClustalOmega")
+candidas28S.cons <- rprimer::consensusProfile(candidas28S.msa, ambiguityThreshold = 0)
+candidas28S.assay <- findAssay("Candidas_28S", candidas28S.msa)
+
+candidas28S.assay <- tidyr::unnest(candidas28S.assay)
+candidas28S.assay$deltaTm <- candidas28S.assay$tmFwd - candidas28S.assay$tmRev
+
+# selecting assay with high probe Tm
+candidas28S.assay2 <- candidas28S.assay[candidas28S.assay$tmPr > 65.6 & candidas28S.assay$lengthFwd < 19 & candidas28S.assay$lengthRev < 19 & abs(candidas28S.assay$deltaTm) <1,] %>% arrange(length)
+
+candidas28S.assay2 <- candidas28S.assay2 %>% mutate(across(where(is.numeric), ~round(., 2)))
+
+
+```
+  
+### Specificity evaluation: cross-reactivity against Human 28S sequences.  
+```{r crossReac_Hs28S, echo = TRUE, message = FALSE, warning = FALSE, tidy = TRUE, results = 'asis'}
+# filtering. Hu cross reactivity
+Hs28S <- Biostrings::readDNAStringSet("../BloodBorneFungalPathogens/assets/Hs28SrRNA.fas")
+
+# forward primer evaluated vs Hs 28S
+PrimerFor.cr <- lapply(unique(candidas28S.assay2$iupacSequenceFwd), function(p) vmatchPattern(p, Hs28S, max.mismatch = 3))
+PrimerFor_subset1 <- unique(candidas28S.assay2$iupacSequenceFwd)[which(sapply(1:length(PrimerFor.cr), function(i) sum(sapply(1:length(Hs28S), function(j) length(PrimerFor.cr[[i]][[j]]@start))))==0)]
+
+# rev primer evaluated vs Hs 28S
+PrimerRev.cr <- lapply(unique(candidas28S.assay2$iupacSequenceRev), function(p) vmatchPattern(p, reverseComplement(Hs28S), max.mismatch = 3))
+PrimerRev_subset1 <- unique(candidas28S.assay2$iupacSequenceRev)[which(sapply(1:length(PrimerRev.cr), function(i) sum(sapply(1:length(Hs28S), function(j) length(PrimerRev.cr[[i]][[j]]@start))))==0)]
+
+# probe  evaluated vs Hs 28S
+probe.cr <- lapply(unique(candidas28S.assay2$iupacSequencePr), function(p) vmatchPattern(p, Hs28S, max.mismatch = 3))
+
+probe_subset1 <- unique(candidas28S.assay2$iupacSequencePr)[which(sapply(1:length(probe.cr), function(i) sum(sapply(1:length(Hs28S), function(j) length(probe.cr[[i]][[j]]@start))))==0)]
+
+candidas28S.assay3 <- candidas28S.assay2[candidas28S.assay2$iupacSequenceFwd %in% PrimerFor_subset1 & candidas28S.assay2$iupacSequenceRev %in% PrimerRev_subset1 & candidas28S.assay2$iupacSequencePr %in% probe_subset1,]
+
+DT::datatable(candidas28S.assay3[c(1,7,12)], caption = "pan Candidas 28S-based qRT-PCR candidate reagents", rownames = F)
+
+#write.table(candidas28S.assay3, "candidas28S.assay3.txt", row.names = F, quote = F, sep = "\t")
+```
+  
+## Pan Candidas 18S.   
+*Source: SILVA SSU Ref NR 99 db*.     
+```{r SLIVAdb18S, echo = TRUE, message = FALSE, warning = FALSE, tidy = TRUE, results = 'asis'}
+# 18S
+# silva18S <- readRDS("silva18S.rds")
+# # selecting fungus entries
+# silvaFungi18S <- silva18S[grep("Fungi", names(silva18S), value = T)]
+# # selecting Saccharomycetales
+# silvaSaccharomycetales18S <- silvaFungi18S[grep("Saccharomycetales", names(silvaFungi18S), value = T)]
+# 
+# # albicans
+# albicans18S <- silvaSaccharomycetales18S[grep("albicans", names(silvaSaccharomycetales18S), value = T)]
+# 
+# # glabrata
+# glabrata18S <- silvaSaccharomycetales18S[grep("glabrata", names(silvaSaccharomycetales18S), value = T)]
+# 
+# # parapsilosis
+# parapsilosis18S <- silvaSaccharomycetales18S[grep("parapsilosis", names(silvaSaccharomycetales18S), value = T)] 
+# 
+# # tropicalis
+# tropicalis18S <- silvaSaccharomycetales18S[grep("tropicalis", names(silvaSaccharomycetales18S), value = T)] 
+# 
+# #kefyr (synomym: Kluyveromyces marxianus)
+# kefyr18S <-  silvaSaccharomycetales18S[grep("Kluyveromyces marxianus", names(silvaSaccharomycetales18S), value = T)] 
+# 
+# #krusei (synomym: Pichia kudriavzevii)
+# krusei18S <- silvaSaccharomycetales18S[grep("Pichia kudriavzevii", names(silvaSaccharomycetales18S), value = T)] 
+# 
+# candidas18S <- c(albicans18S, glabrata18S, kefyr18S, krusei18S, parapsilosis18S, tropicalis18S)
+# 
+# candidas18S.msa <- msa(candidas18S, method = "ClustalOmega")
+# candidas18S.cons <- rprimer::consensusProfile(candidas18S.msa, ambiguityThreshold = 0)
+# candidas18S.assay <- findAssay("Candidas_18S", candidas18S.msa)
+
+```
+  
+*No adequat qRT-PCR assays found for the 18S genes*. 
+
+# Candida glabrata.  
+## 28S. 
+```{r glabrata., echo = TRUE, message = FALSE, warning = FALSE, tidy = TRUE, results = 'asis'}
+glabrata28S.msa <- msa(glabrata, method = "ClustalOmega")
+glabrata28S.cons <- rprimer::consensusProfile(glabrata28S.msa, ambiguityThreshold = 0)
+# #glabrata28S.assay <- findAssay("C.glabrata.28S", glabrata28S.msa)
+# glabrata28S.assay <- tidyr::unnest(glabrata28S.assay)
+# #saveRDS(glabrata28S.assay, "glabrata28S.assay.rds")
+glabrata28S.assay <- readRDS("glabrata28S.assay.rds")
+
+
+# # filtering cross reactivity
+CandidasMinusGlabrata28S <-  c(albicans, kefyr, krusei, parapsilosis, tropicalis)
+
+# identifying forward primer with no mismatch vs. other Candidas
+glabrata28S_PrimerFor.cr <- lapply(unique(glabrata28S.assay$iupacSequenceFwd), function(p) vmatchPattern(p, CandidasMinusGlabrata28S, max.mismatch = 1))
+#glabrata28S_PrimerFor.cr <- sapply(1:length(glabrata28S_PrimerFor.cr), function(i) sapply(1:63, function(j) sum(glabrata28S_PrimerFor.cr[[i]][[j]]@start)))[1,]
+glabrata28S_PrimerFor_subset1 <- unique(glabrata28S.assay$iupacSequenceFwd)[which(sapply(1:length(glabrata28S_PrimerFor.cr), function(i) sum(sapply(1:length(CandidasMinusGlabrata28S), function(j) length(glabrata28S_PrimerFor.cr[[i]][[j]]@start))))==0)]
+
+# identifying rev primer with no mismatch vs. other Candidas
+glabrata28S_PrimerRev.cr <- lapply(unique(glabrata28S.assay$iupacSequenceRev), function(p) vmatchPattern(p, reverseComplement(CandidasMinusGlabrata28S), max.mismatch = 1))
+
+glabrata28S_PrimerRev_subset1 <- unique(glabrata28S.assay$iupacSequenceRev)[which(sapply(1:length(glabrata28S_PrimerRev.cr), function(i) sum(sapply(1:length(CandidasMinusGlabrata28S), function(j) length(glabrata28S_PrimerRev.cr[[i]][[j]]@start))))==0)]
+
+# identifying probe  with no mismatch vs. other Candidas
+glabrata28S_probe.cr <- lapply(unique(glabrata28S.assay$iupacSequencePr), function(p) vmatchPattern(p, CandidasMinusGlabrata28S, max.mismatch = 0))
+
+glabrata28S_probe_subset1 <- unique(glabrata28S.assay$iupacSequencePr)[which(sapply(1:length(glabrata28S_probe.cr), function(i) sum(sapply(1:length(CandidasMinusGlabrata28S), function(j) length(glabrata28S_probe.cr[[i]][[j]]@start))))==0)]
+
+glabrata28S.assay2 <- glabrata28S.assay[glabrata28S.assay$iupacSequenceFwd %in% glabrata28S_PrimerFor_subset1 & glabrata28S.assay$iupacSequenceRev %in% glabrata28S_PrimerRev_subset1 & glabrata28S.assay$iupacSequencePr %in% glabrata28S_probe_subset1,]
+
+# select the row with the highest probe Tm
+glabrata28S.assay2 <- glabrata28S.assay2 %>% dplyr::group_by(iupacSequenceFwd) %>% dplyr::filter(tmPr== max(tmPr)) %>% distinct
+glabrata28S.assay2 <- glabrata28S.assay2 %>% dplyr::group_by(iupacSequenceFwd) %>% dplyr::filter(length== max(length)) %>% distinct %>% arrange(lengthPr, lengthRev)
+
+glabrata28S.assay2 <- glabrata28S.assay2 %>% mutate(across(where(is.numeric), ~round(., 2)))
+
+DT::datatable(glabrata28S.assay2[1,], caption = "C. glabrata specific assay reagents", rownames = F)
+```
+
+
+
+
+
+  
+```{r CompEnv, echo = FALSE}
+df_session_platform <- devtools::session_info()$platform %>%
+  unlist(.) %>%
+  as.data.frame(.) %>%
+  tibble::rownames_to_column(.)
+
+colnames(df_session_platform) <- c("Setting", "Value")
+
+kable(
+  df_session_platform,
+  booktabs = T,
+  align = "l",
+  caption = "R Session Info", # complete caption for main document
+  caption.short = " " # "(ref:Reproducibility-SessionInfo-R-environment-caption)" # short caption for LoT
+) %>%
+  kable_styling(full_width = F,
+                latex_options = c(
+                  "hold_position" # stop table floating
+                )
+  )
+```
